@@ -1,0 +1,129 @@
+# ============================================
+# CodeGuardian-CLI .gitignore
+# ============================================
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.so
+
+# ---------- Build / Distribution ----------
+build/
+dist/
+*.egg
+*.egg-info/
+*.whl
+sdist/
+wheels/
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+MANIFEST
+site-packages/
+
+# ---------- Virtual Environments ----------
+.venv/
+venv/
+env/
+ENV/
+.conda/
+
+# ---------- Testing ----------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.json
+coverage.xml
+junit.xml
+test-results/
+
+# ---------- Type Checking / Linting ----------
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.pyre/
+
+# ---------- IDE / Editors ----------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.settings/
+*.iml
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+$RECYCLE.BIN/
+
+# ---------- Environment / Secrets ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+
+# ---------- Project Outputs ----------
+reports/
+.codeguardian/
+test_output.txt
+*.sarif
+codeguardian.toml
+
+# ---------- Test output artifacts ----------
+tests/*.txt
+tests/_*.txt
+tests/_*.patch
+
+# ---------- Third-party tool caches ----------
+.gitnexus/
+.gitnexusignore
+
+# ---------- Tree-sitter build artifacts ----------
+*.so
+*.dylib
+*.dll
+
+# ---------- Claude / AI tool artifacts ----------
+.claude/
+.claude-internal/
+CLAUDE.md
+
+# ---------- Node (if any JS/TS tooling) ----------
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.npm/
+
+# ---------- Logs ----------
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---------- Misc ----------
+*.bak
+*.tmp
+*.temp
+*.orig
+*.rej
+.cache/
+
+docs/

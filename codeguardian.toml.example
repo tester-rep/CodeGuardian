@@ -1,0 +1,75 @@
+[scan]
+depth = "standard"
+# languages = ["cpp", "java", "go", "lua", "python", "csharp", "javascript", "typescript", "rust"]
+# exclude_paths = ["libs/third_party", "generated"]
+
+[reports]
+formats = ["terminal", "json"]
+
+[ai]
+# AI features require an OpenAI-compatible API endpoint.
+# Set enabled = true and provide CODEGUARDIAN_API_KEY in your environment.
+enabled = false
+provider = "openai"                          # openai / dummy
+model = "gpt-4o"                             # Any model supported by your endpoint
+# summary_model = ""                        # Lightweight model for summaries; empty = reuse model
+# heavy_model = ""                          # Flagship model for deep review; empty = reuse model
+api_key_env = "CODEGUARDIAN_API_KEY"         # Environment variable name for API key
+# base_url = "https://api.openai.com/v1"    # Custom endpoint URL (Azure, local LLM, etc.)
+# max_tokens = 2000
+# temperature = 0.3
+# timeout = 300.0                           # HTTP request timeout in seconds
+# requests_per_second = 0.0                 # Client-side TPS throttle; 0 = unlimited
+
+[ai.deep_review]
+# enabled = true
+# max_tokens_per_scan = 500000
+# max_concurrent = 5
+# confidence_threshold = 6
+# review_model = ""            # Dedicated model for deep review; empty = reuse ai.model
+# critic_model = ""            # Ultra mode critic model; empty = reuse review_model
+
+[ai.ai_verify]
+# AI Verifier — two-pass AI false-positive check on engine findings.
+# Enabled by default. Findings judged as FP are downgraded to info severity.
+# Use --drop-false-positives to exclude them from final report.
+# enabled = true
+# max_tokens_per_scan = 200000
+# max_concurrent = 5
+# verify_model = ""            # Pass 1 model; empty = ai.summary_model or ai.model
+# escalate_model = ""          # Pass 2 model; empty = ai.heavy_model or verify_model
+# drop_false_positives = false
+
+[ai.free_review]
+# enabled = true              # Enable scout phase (high-recall first pass)
+# max_tokens_per_scan = 200000
+# max_concurrent = 3
+# review_model = ""           # empty = reuse ai.model
+# min_suspicion_confidence = 3
+# max_suspicions = 500
+
+[risk]
+default_threshold = 60.0
+
+[gate]
+config_path = "gate.yaml"
+
+[rules]
+# enabled = ["SQL-INJECTION-RISK", "COMMAND-INJECTION-RISK"]
+# disabled = ["PRINT-DEBUG"]
+# include_tags = ["sql"]
+# exclude_tags = ["cleanup"]
+# min_severity = "medium"
+# baseline_path = ".codeguardian/latest.json"
+
+[semgrep]
+# Optional Semgrep SAST integration.
+# Requires the `semgrep` CLI: pip install "codeguardian[semgrep]"  (or  pip install semgrep)
+enabled = false
+# config = ["p/security-audit"]   # one or more rule packs / paths / registry IDs
+# timeout = 300.0                 # per-scan timeout in seconds
+# max_target_bytes = 1000000      # skip files larger than this
+# jobs = 1                        # parallel workers
+# severity_filter = []            # empty = all; e.g. ["ERROR", "WARNING"]
+# extra_args = []                 # passthrough flags appended to the CLI
+# local_validate = true           # apply LocalValidator FP filter to security findings

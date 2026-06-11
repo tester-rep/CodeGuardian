@@ -1,0 +1,106 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codeguardian"
+version = "0.1.0"
+description = "AI-driven code quality auditing and engineering diagnostics CLI"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "CodeGuardian Team" },
+]
+license = { text = "Apache-2.0" }
+keywords = ["code-quality", "static-analysis", "cli", "audit", "security", "ai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+]
+
+dependencies = [
+    "typer>=0.12.0,<1.0",
+    "rich>=13.7.0,<14.0",
+    "pydantic>=2.7.0,<3.0",
+    "PyYAML>=6.0.1,<7.0",
+    "tree-sitter>=0.21.0,<1.0",
+    "tree-sitter-python>=0.21.0,<1.0",
+    "tree-sitter-java>=0.21.0,<1.0",
+    "tree-sitter-javascript>=0.21.0,<1.0",
+    "tree-sitter-typescript>=0.21.0,<1.0",
+    "tree-sitter-cpp>=0.21.0,<1.0",
+    "tree-sitter-go>=0.21.0,<1.0",
+    "tree-sitter-lua>=0.2.0,<1.0",
+    "tree-sitter-c-sharp>=0.21.0,<1.0",
+    "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+]
+git = [
+    "GitPython>=3.1.40",
+]
+report-pdf = [
+    "weasyprint>=60.0",
+]
+semgrep = [
+    "semgrep>=1.0,<2.0",
+]
+
+[project.scripts]
+codeguardian = "codeguardian.cli.app:app"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "SIM",    # flake8-simplify
+    "TCH",    # flake8-type-checking
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "tree_sitter.*",
+    "rich.*",
+    "typer.*",
+]
+ignore_missing_imports = true

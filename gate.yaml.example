@@ -1,0 +1,46 @@
+quality_gate:
+  rules:
+    - name: "minimum_score"
+      condition: "project.overall_score >= 60"
+      action: fail
+      message: "Project overall score is below 60"
+
+    - name: "no_blocking_findings"
+      condition: "findings.blocking == 0"
+      action: fail
+      message: "There are blocking findings that must be fixed before release"
+
+    - name: "no_critical_security"
+      condition: "security.critical == 0"
+      action: fail
+      message: "Critical security findings detected — release blocked"
+
+    - name: "line_coverage_or_unavailable"
+      condition: "test.line_coverage >= 70 or test.unavailable == true"
+      action: warn
+      message: "Line coverage below 70%: {actual}%"
+
+    - name: "branch_coverage_minimum"
+      condition: "test.coverage_branch >= 60% or test.unavailable == true"
+      action: warn
+      message: "Branch coverage below 60%: {actual}%"
+
+    - name: "core_module_score"
+      condition: "risk.core_module_score >= 75"
+      action: fail
+      message: "Core module score too low ({actual})"
+
+    - name: "duplication_limit"
+      condition: "duplication.overall_ratio <= 8%"
+      action: warn
+      message: "Duplication ratio is too high ({actual})"
+
+    - name: "high_complexity_functions"
+      condition: "complexity.new_high_cc <= 3"
+      action: warn
+      message: "Too many high-complexity functions ({actual})"
+
+    - name: "high_risk_modules"
+      condition: "risk.high_risk_modules <= 2"
+      action: warn
+      message: "Too many high-risk modules ({actual})"
