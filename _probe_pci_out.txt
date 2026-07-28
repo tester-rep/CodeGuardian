@@ -1,0 +1,129 @@
+=== PCI 总览 ===
+files parsed = 56
+symbols = 331
+functions/methods = 261
+classes = 70
+call edges (all) = 486
+summaries = 261
+symbol languages = {'java': 331}
+
+=== 边 confidence 分布 (阈值0.7是所有跨函数检测的门槛) ===
+  <0.5      : 0
+  0.5-0.69  : 28
+  >=0.7     : 458
+
+=== 按 CallForm 的 confidence 分布 ===
+  free        : <0.5=0, 0.5-0.69=4, >=0.7=236
+  constructor : <0.5=0, 0.5-0.69=1, >=0.7=62
+  method      : <0.5=0, 0.5-0.69=23, >=0.7=160
+
+=== 关键文件的函数 & 调用边情况 ===
+
+[OrderService] file=order-processor/src/main/java/com/example/orderproc/service/OrderService.java 函数数=4
+    OrderService() qn=order-processor.src.main.java.com.example.orderproc.service.OrderService.OrderService
+        callees=1 (>=0.7: 1), callers=0, summary=[]
+        callee边: OrderService=0.90/constructor
+    processRefund() qn=order-processor.src.main.java.com.example.orderproc.service.OrderService.processRefund
+        callees=6 (>=0.7: 6), callers=1, summary=[SINK]
+        callee边: processRefund=0.95/free; findById=0.80/method; update=0.80/method; execute=0.80/method; getStatus=0.70/method; setStatus=0.70/method
+    getOrderDetail() qn=order-processor.src.main.java.com.example.orderproc.service.OrderService.getOrderDetail
+        callees=2 (>=0.7: 2), callers=1, summary=[]
+        callee边: getOrderDetail=0.95/free; findById=0.80/method
+    execute() qn=order-processor.src.main.java.com.example.orderproc.service.RefundProcessor.execute
+        callees=1 (>=0.7: 1), callers=2, summary=[SINK]
+        callee边: execute=0.95/free
+
+[CleanupService] file=data-cleanup/src/main/java/com/example/datacln/CleanupService.java 函数数=3
+    CleanupService() qn=data-cleanup.src.main.java.com.example.datacln.CleanupService.CleanupService
+        callees=1 (>=0.7: 1), callers=0, summary=[]
+        callee边: CleanupService=0.90/constructor
+    cleanExpiredRecords() qn=data-cleanup.src.main.java.com.example.datacln.CleanupService.cleanExpiredRecords
+        callees=5 (>=0.7: 5), callers=1, summary=[]
+        callee边: cleanExpiredRecords=0.95/free; deleteBatch=0.80/method; getRetentionDays=0.80/method; getMaxBatch=0.80/method; getSafetyLimit=0.80/method
+    deleteBatch() qn=data-cleanup.src.main.java.com.example.datacln.DataStore.deleteBatch
+        callees=1 (>=0.7: 1), callers=2, summary=[]
+        callee边: deleteBatch=0.95/free
+
+[PaymentService] file=payment-gateway/src/main/java/com/example/paygw/service/PaymentService.java 函数数=2
+    PaymentService() qn=payment-gateway.src.main.java.com.example.paygw.service.PaymentService.PaymentService
+        callees=1 (>=0.7: 1), callers=0, summary=[]
+        callee边: PaymentService=0.90/constructor
+    transfer() qn=payment-gateway.src.main.java.com.example.paygw.service.PaymentService.transfer
+        callees=16 (>=0.7: 14), callers=1, summary=[]
+        callee边: transfer=0.95/free; Transaction=0.90/constructor; warning=0.80/method; deduct=0.80/method; warning=0.80/method; insert=0.80/method
+
+[CounterService] file=visit-counter/src/main/java/com/example/visitcnt/CounterService.java 函数数=3
+    increment() qn=visit-counter.src.main.java.com.example.visitcnt.CounterService.increment
+        callees=1 (>=0.7: 1), callers=1, summary=[]
+        callee边: increment=0.95/free
+    getStats() qn=visit-counter.src.main.java.com.example.visitcnt.CounterService.getStats
+        callees=4 (>=0.7: 3), callers=1, summary=[]
+        callee边: getStats=0.95/free; setTotal=0.75/method; setToday=0.75/method; VisitRecord=0.60/constructor
+    resetDailyCounter() qn=visit-counter.src.main.java.com.example.visitcnt.CounterService.resetDailyCounter
+        callees=1 (>=0.7: 1), callers=1, summary=[]
+        callee边: resetDailyCounter=0.95/free
+
+[CacheManager] file=cache-service/src/main/java/com/example/cachesvc/CacheManager.java 函数数=4
+    CacheManager() qn=cache-service.src.main.java.com.example.cachesvc.CacheManager.CacheManager
+        callees=1 (>=0.7: 1), callers=0, summary=[]
+        callee边: CacheManager=0.90/constructor
+    getOrLoad() qn=cache-service.src.main.java.com.example.cachesvc.CacheManager.getOrLoad
+        callees=6 (>=0.7: 6), callers=1, summary=[]
+        callee边: getOrLoad=0.95/free; get=0.80/method; get=0.80/method; info=0.80/method; fetch=0.80/method; put=0.80/method
+    invalidate() qn=cache-service.src.main.java.com.example.cachesvc.CacheManager.invalidate
+        callees=2 (>=0.7: 2), callers=1, summary=[]
+        callee边: invalidate=0.95/free; remove=0.80/method
+    getCacheSize() qn=cache-service.src.main.java.com.example.cachesvc.CacheManager.getCacheSize
+        callees=2 (>=0.7: 2), callers=1, summary=[]
+        callee边: getCacheSize=0.95/free; size=0.80/method
+
+[OrderFulfillService] file=order-fulfill/src/main/java/com/example/ordful/OrderFulfillService.java 函数数=2
+    OrderFulfillService() qn=order-fulfill.src.main.java.com.example.ordful.OrderFulfillService.OrderFulfillService
+        callees=1 (>=0.7: 1), callers=0, summary=[]
+        callee边: OrderFulfillService=0.90/constructor
+    fulfill() qn=order-fulfill.src.main.java.com.example.ordful.OrderFulfillService.fulfill
+        callees=6 (>=0.7: 6), callers=1, summary=[]
+        callee边: fulfill=0.95/free; info=0.80/method; reserve=0.80/method; warning=0.80/method; createLabel=0.80/method; warning=0.80/method
+
+[AsyncTaskProcessor] file=async-processor/src/main/java/com/example/asyncproc/AsyncTaskProcessor.java 函数数=3
+    AsyncTaskProcessor() qn=async-processor.src.main.java.com.example.asyncproc.AsyncTaskProcessor.AsyncTaskProcessor
+        callees=1 (>=0.7: 1), callers=0, summary=[]
+        callee边: AsyncTaskProcessor=0.90/constructor
+    onTaskComplete() qn=async-processor.src.main.java.com.example.asyncproc.AsyncTaskProcessor.onTaskComplete
+        callees=5 (>=0.7: 5), callers=2, summary=[]
+        callee边: onTaskComplete=0.95/free; info=0.80/method; uploadSync=0.80/method; info=0.80/method; runAsync=0.70/method
+    onBatchComplete() qn=async-processor.src.main.java.com.example.asyncproc.AsyncTaskProcessor.onBatchComplete
+        callees=2 (>=0.7: 2), callers=1, summary=[]
+        callee边: onBatchComplete=0.95/free; onTaskComplete=0.95/free
+
+[MigrationService] file=data-migrator/src/main/java/com/example/datamgr/MigrationService.java 函数数=2
+    MigrationService() qn=data-migrator.src.main.java.com.example.datamgr.MigrationService.MigrationService
+        callees=1 (>=0.7: 1), callers=0, summary=[]
+        callee边: MigrationService=0.90/constructor
+    migrate() qn=data-migrator.src.main.java.com.example.datamgr.MigrationService.migrate
+        callees=4 (>=0.7: 4), callers=1, summary=[]
+        callee边: migrate=0.95/free; RuntimeException=0.95/constructor; readAll=0.80/method; write=0.80/method
+
+[DistributedLockManager] file=distributed-lock/src/main/java/com/example/distlock/DistributedLockManager.java 函数数=6
+    DistributedLockManager() qn=distributed-lock.src.main.java.com.example.distlock.DistributedLockManager.DistributedLockManager
+        callees=1 (>=0.7: 1), callers=0, summary=[]
+        callee边: DistributedLockManager=0.90/constructor
+    executeUnderLock() qn=distributed-lock.src.main.java.com.example.distlock.DistributedLockManager.executeUnderLock
+        callees=7 (>=0.7: 7), callers=1, summary=[rel(1),SINK]
+        callee边: executeUnderLock=0.95/free; Lock=0.90/constructor; info=0.80/method; process=0.80/method; info=0.80/method; acquire=0.75/method
+    Lock() qn=distributed-lock.src.main.java.com.example.distlock.Lock.Lock
+        callees=1 (>=0.7: 1), callers=0, summary=[]
+        callee边: Lock=0.90/constructor
+    acquire() qn=distributed-lock.src.main.java.com.example.distlock.Lock.acquire
+        callees=1 (>=0.7: 1), callers=2, summary=[]
+        callee边: acquire=0.95/free
+    release() qn=distributed-lock.src.main.java.com.example.distlock.Lock.release
+        callees=1 (>=0.7: 1), callers=2, summary=[]
+        callee边: release=0.95/free
+    isHeld() qn=distributed-lock.src.main.java.com.example.distlock.Lock.isHeld
+        callees=1 (>=0.7: 1), callers=1, summary=[]
+        callee边: isHeld=0.95/free
+
+[UserService] 无匹配文件/函数 (未纳入符号表)
+
+graph dumped to _probe_graph.json

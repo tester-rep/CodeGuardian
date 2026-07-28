@@ -8,7 +8,7 @@ Covers: EXCEPTION-NOT-RAISED, MUTABLE-DEFAULT-ARG, SELF-ASSIGNMENT,
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from codeguardian.config.loader import load_app_config
+from codeguardian.config.defaults import default_config
 from codeguardian.core.context import ScanContext
 from codeguardian.engines.defect_engine import DefectEngine
 
@@ -26,7 +26,7 @@ def validate(x):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "EXCEPTION-NOT-RAISED"]
@@ -44,7 +44,7 @@ def validate(x):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "EXCEPTION-NOT-RAISED"]
@@ -62,7 +62,7 @@ def process():
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "EXCEPTION-NOT-RAISED"]
@@ -81,7 +81,7 @@ def append_to(item, target=[]):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "MUTABLE-DEFAULT-ARG"]
@@ -97,7 +97,7 @@ def merge(extra, base={}):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "MUTABLE-DEFAULT-ARG"]
@@ -112,7 +112,7 @@ def greet(name, greeting="hello"):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "MUTABLE-DEFAULT-ARG"]
@@ -131,7 +131,7 @@ def process(data):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "SELF-ASSIGNMENT"]
@@ -147,7 +147,7 @@ class Foo:
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "SELF-ASSIGNMENT"]
@@ -163,7 +163,7 @@ def process(data):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "SELF-ASSIGNMENT"]
@@ -184,7 +184,7 @@ for i in range(5):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "REDEFINE-IN-LOOP"]
@@ -202,7 +202,7 @@ for i in range(5):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "REDEFINE-IN-LOOP"]
@@ -223,7 +223,7 @@ def process():
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "EXCEPTION-LOST-CONTEXT"]
@@ -241,7 +241,7 @@ def process():
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "EXCEPTION-LOST-CONTEXT"]
@@ -259,7 +259,7 @@ def process():
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "EXCEPTION-LOST-CONTEXT"]
@@ -277,7 +277,7 @@ def loop():
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "INFINITE-RECURSION-RISK"]
@@ -292,7 +292,7 @@ def loop():
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "INFINITE-RECURSION-RISK"]
@@ -309,7 +309,7 @@ def factorial(n):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "INFINITE-RECURSION-RISK"]
@@ -332,7 +332,7 @@ class Child(Base):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "MISSING-SUPER-INIT"]
@@ -353,7 +353,7 @@ class Child(Base):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "MISSING-SUPER-INIT"]
@@ -369,7 +369,7 @@ class Standalone:
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "MISSING-SUPER-INIT"]
@@ -386,7 +386,7 @@ class AppError(ValueError):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     hits = [f for f in result.findings if f.rule_id == "MISSING-SUPER-INIT"]
@@ -400,7 +400,7 @@ async def _run_defect_engine(source: str) -> list:
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
     return list(result.findings)
 

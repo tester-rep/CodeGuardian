@@ -12,7 +12,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from codeguardian.core.context import ScanContext
-from codeguardian.engines.rule_helpers import RuleHit, RuleSpec, build_finding
+from codeguardian.engines.rule_helpers import (
+    RuleHit,
+    RuleSpec,
+    build_finding,
+    is_suppressed_by_inline_comment,
+    is_test_file_path,
+)
 from codeguardian.engines.rule_registry import filter_rule_hits, register_rules
 from codeguardian.languages import (
     EXTENSION_LANGUAGE_MAP,
@@ -296,8 +302,15 @@ class PerformanceEngine:
             hits = self._scan_file(src_file, root, rel_path, content, language)
             hits = filter_rule_hits(hits, ctx.config.rules)
 
+            # Heuristic query-pattern rules are noisy in test files (in-memory DBs,
+            # full scans, N+1 in fixtures); suppress them there.
+            is_test = is_test_file_path(rel_path)
             seen: set[tuple[str, str, int, int]] = set()
             for hit in hits:
+                if is_test and hit.rule.rule_id in self._TEST_SUPPRESSED_RULES:
+                    continue
+                if is_suppressed_by_inline_comment(hit.rule.rule_id, lines, hit.line_start):
+                    continue
                 key = (hit.rule.rule_id, hit.file_path, hit.line_start, hit.line_end)
                 if key in seen:
                     continue
@@ -324,7 +337,8 @@ class PerformanceEngine:
         hits.extend(self._detect_sql_in_loop(content, rel_path, language))
         hits.extend(self._detect_redos(content, rel_path, language))
         hits.extend(self._detect_transaction_scope(content, rel_path, language))
-        hits.extend(self._detect_missing_pagination(content, rel_path, language))
+        if language != "python":  # Python uses the AST-based pagination check in _scan_python_ast
+            hits.extend(self._detect_missing_pagination(content, rel_path, language))
 
         # Language-specific deep detection
         if language == "python":
@@ -355,14 +369,21 @@ class PerformanceEngine:
     _SELECT_STAR_RE = re.compile(
         r"""(?ix)
         (?:execute|query|raw|sql|cursor\.execute|db\.query|prepare)\s*\(\s*
-        (?:f?['"`])?\s*SELECT\s+\*\s+FROM\s+\w+
-        (?!\s+WHERE)(?!\s+LIMIT)(?!\s+JOIN)
+        (?:f?['"`])?\s*SELECT\s+\*\s+FROM\s+\w+\b
+        (?![^'"`]*\b(?:WHERE|LIMIT|JOIN)\b)
         """,
     )
 
+    # Require a call parenthesis so prose strings like "never execute" or
+    # "# run the query" do not match — only real DB call sites do.
     _SQL_CALL_KEYWORDS = re.compile(
-        r"""(?i)(?:execute|query|cursor\.execute|db\.query|prepare|rawQuery|execSQL|\.sql\()""",
+        r"""(?i)(?:execute|query|prepare|rawQuery|execSQL)\w*\s*\(|(?:cursor\.execute|db\.query|\.sql)\s*\(""",
     )
+
+    # Heuristic query-pattern rules suppressed inside test files.
+    _TEST_SUPPRESSED_RULES = frozenset({
+        "SQL-IN-LOOP", "MISSING-PAGINATION", "SELECT-STAR-NO-LIMIT",
+    })
 
     _LOOP_START_RE = re.compile(r"""(?:^\s*(?:for|while|forEach|\.each|\.map)\b)""", re.MULTILINE)
 
@@ -420,6 +441,9 @@ class PerformanceEngine:
                 # Exited loop (dedent or end)
                 if stripped and indent <= loop_indent and not stripped.startswith(("}", ")")):
                     in_loop = False
+                    continue
+                # Skip comment lines — a mention of "execute"/"query" in prose is not a DB call.
+                if stripped.startswith(("#", "//")):
                     continue
                 # Check for SQL call inside loop
                 if self._SQL_CALL_KEYWORDS.search(stripped):
@@ -524,6 +548,61 @@ class PerformanceEngine:
     # Python analysis (unchanged from original)
     # ════════════════════════════════════════════════════════════════════
 
+    # Method names that return a full result set (candidate for MISSING-PAGINATION).
+    _PAGINATION_METHODS = frozenset({
+        "find_all", "findAll", "get_all", "getAll", "fetchall", "fetch_all",
+    })
+    # Argument / parameter names that indicate pagination is applied.
+    _PAGINATION_ARG_HINTS = frozenset({
+        "limit", "page", "pages", "pageable", "offset", "per_page", "page_size", "size", "paginate",
+    })
+
+    def _scan_missing_pagination_ast(self, node: ast.Call, tree: ast.AST, rel_path: str) -> list[RuleHit]:
+        """AST-based MISSING-PAGINATION: a full-result-set query call that neither
+        passes a pagination argument nor sits in a function taking one."""
+        func = node.func
+        method = func.attr if isinstance(func, ast.Attribute) else (func.id if isinstance(func, ast.Name) else None)
+        if method not in self._PAGINATION_METHODS:
+            return []
+        if self._call_has_pagination(node, tree):
+            return []
+        return [RuleHit(
+            MISSING_PAGINATION, rel_path, node.lineno, node.lineno, language="python",
+            message="List query without pagination (no LIMIT/page argument or parameter)",
+        )]
+
+    def _call_has_pagination(self, call_node: ast.Call, tree: ast.AST) -> bool:
+        for arg in call_node.args:
+            if self._expr_mentions_pagination(arg):
+                return True
+        for kw in call_node.keywords:
+            if kw.arg and kw.arg.lower() in self._PAGINATION_ARG_HINTS:
+                return True
+            if self._expr_mentions_pagination(kw.value):
+                return True
+        func = self._enclosing_function(tree, call_node.lineno)
+        if func is not None:
+            for a in func.args.args + func.args.kwonlyargs:
+                if a.arg.lower() in self._PAGINATION_ARG_HINTS:
+                    return True
+        return False
+
+    def _expr_mentions_pagination(self, expr: ast.AST) -> bool:
+        for node in ast.walk(expr):
+            if isinstance(node, ast.Name) and node.id.lower() in self._PAGINATION_ARG_HINTS:
+                return True
+            if isinstance(node, ast.Attribute) and node.attr.lower() in self._PAGINATION_ARG_HINTS:
+                return True
+        return False
+
+    @staticmethod
+    def _enclosing_function(tree: ast.AST, lineno: int) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if node.lineno <= lineno <= (getattr(node, "end_lineno", None) or node.lineno):
+                    return node
+        return None
+
     def _scan_python_ast(self, content: str, rel_path: str) -> list[RuleHit]:
         try:
             tree = ast.parse(content)
@@ -534,6 +613,7 @@ class PerformanceEngine:
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 hits.extend(self._scan_http_timeout(node, rel_path))
+                hits.extend(self._scan_missing_pagination_ast(node, tree, rel_path))
             elif isinstance(node, ast.AsyncFunctionDef):
                 hits.extend(self._scan_async_blocking_calls(node, rel_path))
             elif isinstance(node, ast.While):
@@ -694,11 +774,22 @@ class PerformanceEngine:
     def _is_retry_without_backoff(self, node: ast.For | ast.While) -> bool:
         if self._loop_contains_sleep(node):
             return False
+        # A `for` loop iterating a data collection (ids/files/items) that skips
+        # failures via try/except is "process next element", NOT a retry loop.
+        # Only `for ... in range(...)` (bounded attempts) or `while` qualifies.
+        if isinstance(node, ast.For) and not self._is_range_retry_loop(node):
+            return False
         for child in ast.walk(node):
             if not isinstance(child, ast.Try):
                 continue
             if any(self._handler_swallows(handler) for handler in child.handlers):
                 return True
+        return False
+
+    def _is_range_retry_loop(self, node: ast.For) -> bool:
+        iter_node = node.iter
+        if isinstance(iter_node, ast.Call):
+            return self._python_call_name(iter_node.func) in {"range", "xrange"}
         return False
 
     def _loop_contains_sleep(self, node: ast.For | ast.While) -> bool:

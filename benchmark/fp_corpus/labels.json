@@ -1,0 +1,42 @@
+[
+  {"file": "weak_hash.py", "rule_id": "WEAK-HASH", "marker": "md5(pw.encode", "label": "TP", "reason": "密码哈希（安全场景）"},
+  {"file": "weak_hash.py", "rule_id": "WEAK-HASH", "marker": "md5(content)", "label": "FP", "reason": "文件校验和（非安全场景）"},
+  {"file": "weak_hash.py", "rule_id": "WEAK-HASH", "marker": "sha1(data.encode", "label": "FP", "reason": "缓存键（非安全场景）"},
+
+  {"file": "insecure_random.py", "rule_id": "INSECURE-RANDOM", "marker": "str(random.random())", "label": "TP", "reason": "会话令牌（安全场景）"},
+  {"file": "insecure_random.py", "rule_id": "INSECURE-RANDOM", "marker": "random.randint", "label": "TP", "reason": "验证码（安全场景）"},
+  {"file": "insecure_random.py", "rule_id": "INSECURE-RANDOM", "marker": "random.choice", "label": "FP", "reason": "随机采样（非安全场景）"},
+  {"file": "insecure_random.py", "rule_id": "INSECURE-RANDOM", "marker": "random.random() * 0.5", "label": "FP", "reason": "退避抖动（非安全场景）"},
+
+  {"file": "hardcoded_entropy.py", "rule_id": "HARDCODED-PASSWORD", "marker": "api_key = ", "label": "TP", "reason": "高熵真实凭据"},
+  {"file": "hardcoded_entropy.py", "rule_id": "HARDCODED-PASSWORD", "marker": "db_password = ", "label": "TP", "reason": "高熵真实凭据"},
+  {"file": "hardcoded_entropy.py", "rule_id": "HARDCODED-PASSWORD", "marker": "admin_password = ", "label": "FP", "reason": "低熵默认值"},
+  {"file": "hardcoded_entropy.py", "rule_id": "HARDCODED-PASSWORD", "marker": "api_secret = ", "label": "FP", "reason": "低熵常见值"},
+  {"file": "hardcoded_entropy.py", "rule_id": "HARDCODED-PASSWORD", "marker": "root_token = ", "label": "FP", "reason": "低熵连续数字"},
+
+  {"file": "control_phase0.py", "rule_id": "HARDCODED-PASSWORD", "marker": "password = ", "label": "FP", "reason": "占位符（Phase 0 已过滤）"},
+  {"file": "control_phase0.py", "rule_id": "HARDCODED-PASSWORD", "marker": "api_secret = ", "label": "FP", "reason": "占位符（Phase 0 已过滤）"},
+  {"file": "control_phase0.py", "rule_id": "HARDCODED-PASSWORD", "marker": "real_token = ", "label": "TP", "reason": "高熵真实凭据"},
+
+  {"file": "sql_in_loop.py", "rule_id": "SQL-IN-LOOP", "marker": "cursor.execute(\"SELECT * FROM users WHERE id=%s\", (uid,))", "label": "TP", "reason": "标准 N+1"},
+  {"file": "sql_in_loop.py", "rule_id": "SQL-IN-LOOP", "marker": "cursor.execute(\"SELECT * FROM orders WHERE id=%s\", (oid,))", "label": "TP", "reason": "嵌套循环 N+1"},
+  {"file": "sql_in_loop.py", "rule_id": "SQL-IN-LOOP", "marker": "cursor.execute(\"SELECT * FROM users WHERE id = ANY(%s)\", (ids,))", "label": "FP", "reason": "循环外批量查询"},
+
+  {"file": "select_star.py", "rule_id": "SELECT-STAR-NO-LIMIT", "marker": "cursor.execute(\"SELECT * FROM users\")", "label": "TP", "reason": "SELECT * 无限制"},
+  {"file": "select_star.py", "rule_id": "SELECT-STAR-NO-LIMIT", "marker": "FROM users LIMIT 10", "label": "FP", "reason": "SELECT * 带 LIMIT"},
+  {"file": "select_star.py", "rule_id": "SELECT-STAR-NO-LIMIT", "marker": "WHERE id=%s", "label": "FP", "reason": "SELECT * 带 WHERE"},
+  {"file": "select_star.py", "rule_id": "SELECT-STAR-NO-LIMIT", "marker": "ORDER BY name LIMIT 10", "label": "FP", "reason": "LIMIT 在 ORDER 后"},
+
+  {"file": "pagination.py", "rule_id": "MISSING-PAGINATION", "marker": "repo.find_all()", "label": "TP", "reason": "find_all 无分页"},
+  {"file": "pagination.py", "rule_id": "MISSING-PAGINATION", "marker": "repo.find_all(pageable)", "label": "FP", "reason": "带分页参数"},
+
+  {"file": "sql_in_loop.py", "rule_id": "SQL-IN-LOOP", "marker": "the loop body will never execute", "label": "FP", "reason": "execute 字样在字符串/message 里"},
+
+  {"file": "none_deref.py", "rule_id": "POSSIBLE-NONE-DEREF", "marker": "return x.value", "label": "TP", "reason": "无 guard 直接解引用"},
+  {"file": "none_deref.py", "rule_id": "POSSIBLE-NONE-DEREF", "marker": "x.signature if x else None", "label": "FP", "reason": "三元表达式 guard"},
+  {"file": "none_deref.py", "rule_id": "POSSIBLE-NONE-DEREF", "marker": "x.items()", "label": "FP", "reason": "get 带默认值"},
+  {"file": "none_deref.py", "rule_id": "POSSIBLE-NONE-DEREF", "marker": "x.name", "label": "FP", "reason": "if 语句 guard"},
+
+  {"file": "retry_loop.py", "rule_id": "RETRY-WITHOUT-BACKOFF", "marker": "open_conn", "label": "TP", "reason": "while 重试无退避"},
+  {"file": "retry_loop.py", "rule_id": "RETRY-WITHOUT-BACKOFF", "marker": "parse(f)", "label": "FP", "reason": "for 遍历容错跳过失败元素"}
+]

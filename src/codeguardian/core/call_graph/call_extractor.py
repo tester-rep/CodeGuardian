@@ -6,6 +6,7 @@ Extracts all call sites within a function, classifying each by CallForm
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -46,6 +47,13 @@ def extract_call_sites_from_source(
     """
     sites: list[RawCallSite] = []
 
+    # Pre-pass: collect explicitly-declared local variable types for THIS function
+    # body (``Lock lock = new Lock(id);`` / ``AccountDao dao = ...;``). The declared
+    # type lets us type ``lock.acquire()`` receivers precisely instead of falling
+    # back to a low-confidence global name match. Java/C++/C#/Go-style only —
+    # Python/JS have no `Type var` declaration form.
+    local_types = _collect_local_var_types(lines, language)
+
     for i, line in enumerate(lines):
         stripped = line.strip()
         # Skip comments
@@ -57,10 +65,48 @@ def extract_call_sites_from_source(
 
         new_sites = _extract_calls_from_line(
             stripped, language, caller_qualified_name, caller_file, start_line + i,
+            local_types=local_types,
         )
         sites.extend(new_sites)
 
     return sites
+
+
+# Explicit local declaration: `Type var = ...` (Java/C++/C#/Go typed locals).
+# Captures the declared type (group 1) and variable name (group 2). Anchored so
+# we only match declarations, not assignments or calls. Type may carry generics
+# (`List<Foo>`) or qualifiers — only the raw head token is kept.
+_LOCAL_DECL_RE = re.compile(
+    r"^\s*(?:final\s+|static\s+|const\s+|volatile\s+)*"
+    r"([A-Z]\w*(?:\s*<[^;=]*>)?(?:\[\])?)\s+"   # declared type
+    r"([a-zA-Z_]\w*)\s*"                          # variable name
+    r"=\s*[^=]",                                   # `=` but not `==`
+)
+
+
+def _collect_local_var_types(lines: list[str], language: str) -> dict[str, str]:
+    """Map explicitly-declared local variable names to their declared type head.
+
+    Only ``Type var = ...`` declarations are considered (the user-scoped rule for
+    local type inference); constructor/assignment/return-type inference is out of
+    scope. Applies to statically-typed languages; returns empty for Python/JS.
+    """
+    if language in ("python", "javascript", "typescript"):
+        return {}
+
+    local_types: dict[str, str] = {}
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith(("#", "//", "/*", "*")):
+            continue
+        m = _LOCAL_DECL_RE.match(stripped)
+        if not m:
+            continue
+        type_name = m.group(1).split("<", 1)[0].strip().rstrip("[]").strip()
+        var_name = m.group(2)
+        if type_name:
+            local_types[var_name] = type_name
+    return local_types
 
 
 def extract_call_sites_from_node(
@@ -542,8 +588,6 @@ def _guess_receiver_type(receiver: str) -> str | None:
 # Regex-based fallback extraction (when tree-sitter not available)
 # ═══════════════════════════════════════════════════════════════════════
 
-import re
-
 # Patterns for common call forms
 _FREE_CALL_RE = re.compile(r"\b([a-zA-Z_]\w*)\s*\(")
 _METHOD_CALL_RE = re.compile(r"(\w+(?:\.\w+)*)\s*\.\s*(\w+)\s*\(")
@@ -556,9 +600,11 @@ def _extract_calls_from_line(
     caller_qname: str,
     caller_file: str,
     line_num: int,
+    local_types: dict[str, str] | None = None,
 ) -> list[RawCallSite]:
     """Regex fallback for call extraction from a single line."""
     results: list[RawCallSite] = []
+    local_types = local_types or {}
 
     # Skip keywords that look like calls
     skip_keywords = {
@@ -589,6 +635,10 @@ def _extract_calls_from_line(
         if f"new {receiver}" in line:
             continue
         form = CallForm.SUPER if receiver in ("super", "super()") else CallForm.METHOD
+        # Prefer an explicitly-declared local variable type over the name heuristic:
+        # `lock.acquire()` where `Lock lock = new Lock(...)` was declared resolves
+        # to type `Lock`, not the lowercase-name fallback (which returns None).
+        receiver_type = local_types.get(receiver) or _guess_receiver_type(receiver)
         results.append(RawCallSite(
             caller_qualified_name=caller_qname,
             caller_file=caller_file,
@@ -596,7 +646,7 @@ def _extract_calls_from_line(
             receiver=receiver,
             line=line_num,
             form=form,
-            receiver_type=_guess_receiver_type(receiver),
+            receiver_type=receiver_type,
         ))
 
     # Free function call: func(...)

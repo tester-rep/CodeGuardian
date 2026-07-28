@@ -326,8 +326,16 @@ class CrossFunctionEngine:
             # Rule: RESOURCE-NEVER-CLOSED-XFUNC
             # Function acquires resource but uses_context_manager=False
             if summary.acquires and not summary.releases and not summary.uses_context_manager:
-                # Check if ANY caller/callee in the reachable set releases it
-                reachable = call_graph.reachable_from(qname, max_depth=3, direction="reverse")
+                # Check if ANY function in the reachable set releases it. A
+                # release may live on the caller side (resource returned up and
+                # closed by the caller) OR on the callee side (closed via a
+                # helper such as ``closeSocket()`` / ``FileTools.close()`` inside
+                # a ``finally`` block). The rule message promises to check "the
+                # entire reachable call chain", so traverse BOTH directions;
+                # searching only callers (reverse) missed callee-side releases
+                # and flagged e.g. NetworkMgr.doWork() as a leak.
+                reachable = set(call_graph.reachable_from(qname, max_depth=3, direction="reverse"))
+                reachable |= set(call_graph.reachable_from(qname, max_depth=3, direction="forward"))
                 any_release = False
                 for reachable_sym in reachable:
                     r_summary = summaries.get(reachable_sym)

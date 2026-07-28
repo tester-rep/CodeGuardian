@@ -6,7 +6,7 @@ Covers: UNREACHABLE-CODE, POSSIBLE-NONE-DEREF, UNUSED-VARIABLE, ALWAYS-TRUE-FALS
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from codeguardian.config.loader import load_app_config
+from codeguardian.config.defaults import default_config
 from codeguardian.core.context import ScanContext
 from codeguardian.engines.defect_engine import DefectEngine
 
@@ -23,7 +23,7 @@ def example():
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     unreachable = [f for f in result.findings if f.rule_id == "UNREACHABLE-CODE"]
@@ -40,7 +40,7 @@ def example():
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     unreachable = [f for f in result.findings if f.rule_id == "UNREACHABLE-CODE"]
@@ -57,7 +57,7 @@ def example(flag):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     unreachable = [f for f in result.findings if f.rule_id == "UNREACHABLE-CODE"]
@@ -76,7 +76,7 @@ def example():
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     atf = [f for f in result.findings if f.rule_id == "ALWAYS-TRUE-FALSE"]
@@ -92,7 +92,7 @@ def example():
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     atf = [f for f in result.findings if f.rule_id == "ALWAYS-TRUE-FALSE"]
@@ -108,7 +108,7 @@ def example():
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     atf = [f for f in result.findings if f.rule_id == "ALWAYS-TRUE-FALSE"]
@@ -125,7 +125,7 @@ def example():
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     atf = [f for f in result.findings if f.rule_id == "ALWAYS-TRUE-FALSE"]
@@ -141,7 +141,7 @@ def example(x):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     atf = [f for f in result.findings if f.rule_id == "ALWAYS-TRUE-FALSE"]
@@ -160,7 +160,7 @@ def example():
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     unused = [f for f in result.findings if f.rule_id == "UNUSED-VARIABLE"]
@@ -177,7 +177,7 @@ def example():
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     unused = [f for f in result.findings if f.rule_id == "UNUSED-VARIABLE"]
@@ -193,7 +193,7 @@ def example():
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     unused = [f for f in result.findings if f.rule_id == "UNUSED-VARIABLE"]
@@ -212,7 +212,7 @@ def example(data):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     none_deref = [f for f in result.findings if f.rule_id == "POSSIBLE-NONE-DEREF"]
@@ -230,7 +230,7 @@ def example(data):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     none_deref = [f for f in result.findings if f.rule_id == "POSSIBLE-NONE-DEREF"]
@@ -248,7 +248,7 @@ def example(data):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     none_deref = [f for f in result.findings if f.rule_id == "POSSIBLE-NONE-DEREF"]
@@ -264,7 +264,7 @@ def example(text):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     none_deref = [f for f in result.findings if f.rule_id == "POSSIBLE-NONE-DEREF"]

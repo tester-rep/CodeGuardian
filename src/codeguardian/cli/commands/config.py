@@ -83,9 +83,6 @@ def _set_config(path: Path, key: str, value: str) -> None:
     else:
         content = ""
 
-    # Parse value type
-    parsed_value = _parse_value(value)
-
     # Simple TOML update: find the key and replace, or append
     parts = key.split(".")
     if len(parts) == 2:

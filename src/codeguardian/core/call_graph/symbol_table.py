@@ -64,6 +64,8 @@ class Symbol:
     parent_classes: list[str] = field(default_factory=list)
     # For classes: implemented interfaces
     interfaces: list[str] = field(default_factory=list)
+    # For classes: field name -> declared type name (drives field.method() resolution)
+    field_types: dict[str, str] = field(default_factory=dict)
     # Language tag
     language: str = ""
 
@@ -290,7 +292,9 @@ def build_symbol_table_from_parsed(
                 module_path=module_path,
                 visibility=visibility,
                 language=language,
-                # parent_classes populated later by import resolver
+                parent_classes=list(getattr(cls, "bases", []) or []),
+                interfaces=list(getattr(cls, "interfaces", []) or []),
+                field_types=dict(getattr(cls, "field_types", {}) or {}),
             ))
 
         # Register functions/methods
@@ -348,7 +352,10 @@ def _file_to_module_path(rel_path: str, language: str) -> str:
         return ".".join(parts)
 
     if language == "java":
-        # src/main/java/com/app/dao/UserDAO.java -> com.app.dao.UserDAO
+        # src/main/java/com/app/dao/UserDAO.java -> com.app.dao (the package;
+        # the trailing UserDAO is the class name, NOT part of the package).
+        # Keeping the class name here produced malformed qualified names such as
+        # com.app.dao.UserDAO.UserDAO.method and broke import/type matching.
         parts = list(Path(normalized).with_suffix("").parts)
         # Strip standard Maven/Gradle source roots
         for root in ("src/main/java", "src/test/java", "src"):
@@ -356,6 +363,9 @@ def _file_to_module_path(rel_path: str, language: str) -> str:
             if parts[:len(root_parts)] == root_parts:
                 parts = parts[len(root_parts):]
                 break
+        # Drop the file (class) name — the package is the directory path.
+        if len(parts) > 1:
+            parts = parts[:-1]
         return ".".join(parts)
 
     if language == "go":

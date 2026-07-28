@@ -13,7 +13,14 @@ from typing import TYPE_CHECKING, Any
 
 from codeguardian.core.context import ScanContext
 from codeguardian.engines.python_taint import PythonTaintAnalyzer, PythonTaintRules
-from codeguardian.engines.rule_helpers import RuleHit, RuleSpec, build_finding
+from codeguardian.engines.rule_helpers import (
+    RuleHit,
+    RuleSpec,
+    build_finding,
+    is_non_secret_value,
+    is_suppressed_by_inline_comment,
+    is_test_file_path,
+)
 from codeguardian.engines.rule_registry import filter_rule_hits, register_rules
 from codeguardian.languages import (
     EXTENSION_LANGUAGE_MAP,
@@ -54,6 +61,9 @@ SENSITIVE_NAME_RE = re.compile(
     re.IGNORECASE,
 )
 SQL_CALL_RE = re.compile(r"(?:^|\.)(?:execute|executeQuery|executeUpdate|query|raw|exec|sqlite3_exec|ExecuteNonQuery|ExecuteReader|ExecuteScalar)$", re.IGNORECASE)
+# Extracts the first quoted value of >=4 chars from a regex-matched secret line,
+# used to filter placeholders from the regex-based HARDCODED-PASSWORD path.
+_QUOTED_SECRET_VALUE_RE = re.compile(r"[\"'](?P<value>[^\"']{4,})[\"']")
 STRING_LITERAL_RE = re.compile(r"^\s*(?:\"(?:\\.|[^\"])*\"|'(?:\\.|[^'])*')\s*$")
 BACKTICK_LITERAL_RE = re.compile(r"^\s*`(?:\\.|[^`$]|\$(?!\{))*`\s*$")
 C_LIKE_SYSTEM_DECLARATION_RE = re.compile(
@@ -441,8 +451,15 @@ class SecurityEngine:
             hits.extend(self._scan_ast(src_file, root, rel_path, content, language))
             hits = filter_rule_hits(hits, ctx.config.rules)
 
+            # Test files are not part of the deployed attack surface; suppress
+            # security rules there (fixtures/mocks otherwise flood the report).
+            is_test = is_test_file_path(rel_path)
             seen: set[tuple[str, str, int, int]] = set()
             for hit in hits:
+                if is_test and hit.rule.rule_id in self._TEST_SUPPRESSED_RULES:
+                    continue
+                if is_suppressed_by_inline_comment(hit.rule.rule_id, lines, hit.line_start):
+                    continue
                 key = (hit.rule.rule_id, hit.file_path, hit.line_start, hit.line_end)
                 if key in seen:
                     continue
@@ -458,6 +475,16 @@ class SecurityEngine:
     _AST_COVERED_LANGUAGES = frozenset({"java", "javascript", "typescript", "cpp", "go"})
     _AST_COVERED_RULES = frozenset({
         "HARDCODED-PASSWORD", "COMMAND-INJECTION-RISK", "WEAK-HASH", "INSECURE-RANDOM",
+    })
+    # Rules the Python AST path covers WITH extra context (security-context triage
+    # for weak-hash/insecure-random). Skipped in the Python regex path so the
+    # context-free regex does not re-report (and bypass) what AST already judged.
+    _PYTHON_AST_CONTEXT_RULES = frozenset({"WEAK-HASH", "INSECURE-RANDOM"})
+    # All security findings are suppressed inside test files (fixtures/mocks).
+    _TEST_SUPPRESSED_RULES = frozenset({
+        "HARDCODED-PASSWORD", "SQL-INJECTION-RISK", "EVAL-USAGE", "WEAK-HASH",
+        "INSECURE-RANDOM", "PATH-TRAVERSAL-RISK", "COMMAND-INJECTION-RISK",
+        "UNSAFE-DESERIALIZATION", "WEAK-CIPHER", "INSECURE-TLS-VERIFICATION", "SSRF-RISK",
     })
 
     def _scan_ast(
@@ -493,10 +520,16 @@ class SecurityEngine:
             for rule, pattern in REGEX_RULES:
                 if language == "python" and rule.rule_id in PYTHON_TAINT_RULE_IDS:
                     continue
+                # Python AST already judges these WITH security-context triage;
+                # skip the context-free regex hit so it cannot bypass that judgment.
+                if language == "python" and rule.rule_id in cls._PYTHON_AST_CONTEXT_RULES:
+                    continue
                 # Skip rules already covered by tree-sitter AST analysis for C++/Go
                 if language in cls._AST_COVERED_LANGUAGES and rule.rule_id in cls._AST_COVERED_RULES:
                     continue
                 if pattern.search(line):
+                    if rule.rule_id == "HARDCODED-PASSWORD" and cls._regex_secret_is_placeholder(line):
+                        continue
                     hits.append(
                         RuleHit(
                             rule=rule,
@@ -524,11 +557,19 @@ class SecurityEngine:
                 names: list[str] = []
                 for target in node.targets:
                     names.extend(self._python_assignment_names(target))
-                if self._contains_sensitive_name(names) and self._is_string_literal(node.value):
+                if (
+                    self._contains_sensitive_name(names)
+                    and self._is_string_literal(node.value)
+                    and not is_non_secret_value(node.value.value)
+                ):
                     hits.append(RuleHit(HARDCODED_PASSWORD, rel_path, node.lineno, node.lineno, language=language))
             elif isinstance(node, ast.AnnAssign):
                 names = self._python_assignment_names(node.target)
-                if self._contains_sensitive_name(names) and self._is_string_literal(node.value):
+                if (
+                    self._contains_sensitive_name(names)
+                    and self._is_string_literal(node.value)
+                    and not is_non_secret_value(node.value.value)
+                ):
                     hits.append(RuleHit(HARDCODED_PASSWORD, rel_path, node.lineno, node.lineno, language=language))
             elif isinstance(node, ast.Call):
                 call_name = self._python_call_name(node.func)
@@ -536,7 +577,7 @@ class SecurityEngine:
                     hits.append(RuleHit(EVAL_USAGE, rel_path, node.lineno, node.lineno, language=language))
                 if call_name in {"pickle.load", "pickle.loads", "yaml.load", "marshal.load", "marshal.loads"}:
                     hits.append(RuleHit(UNSAFE_DESERIALIZATION, rel_path, node.lineno, node.lineno, language=language))
-                if call_name in {"hashlib.md5", "hashlib.sha1", "md5", "sha1"}:
+                if call_name in {"hashlib.md5", "hashlib.sha1", "md5", "sha1"} and self._is_security_sensitive_context(tree, node.lineno):
                     hits.append(RuleHit(WEAK_HASH, rel_path, node.lineno, node.lineno, language=language))
                 if call_name.startswith("random.") and call_name.rsplit(".", maxsplit=1)[-1] in {
                     "random",
@@ -544,7 +585,7 @@ class SecurityEngine:
                     "randrange",
                     "choice",
                     "choices",
-                }:
+                } and self._is_security_sensitive_context(tree, node.lineno):
                     hits.append(RuleHit(INSECURE_RANDOM, rel_path, node.lineno, node.lineno, language=language))
                 # SSRF: HTTP call with variable URL (not string literal)
                 if call_name in _HTTP_SSRF_CALLS and node.args:
@@ -555,6 +596,37 @@ class SecurityEngine:
                                            message=f"HTTP call '{call_name}' with non-constant URL — potential SSRF"))
         return hits
 
+    # Function-name context keywords for weak-hash / insecure-random triage (Phase 2.2).
+    _NON_SECURITY_CONTEXT = frozenset({
+        "checksum", "etag", "cache", "fingerprint", "integrity", "digest",
+        "sample", "shuffle", "jitter", "backoff", "pick",
+    })
+    _SECURITY_CONTEXT = frozenset({
+        "password", "passwd", "pwd", "secret", "token", "session", "auth",
+        "credential", "verify", "otp", "csrf", "salt",
+    })
+
+    @staticmethod
+    def _enclosing_function_name(tree: ast.AST, lineno: int) -> str:
+        """Innermost function whose line range contains lineno; '' at module level."""
+        name = ""
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if node.lineno <= lineno <= (getattr(node, "end_lineno", None) or node.lineno):
+                    name = node.name
+        return name
+
+    def _is_security_sensitive_context(self, tree: ast.AST, lineno: int) -> bool:
+        """True when the enclosing function looks security-relevant (weak-hash /
+        insecure-random is a real risk there); False for clearly non-security
+        contexts (checksum/cache/sample/jitter); defaults True (conservative)."""
+        func_name = self._enclosing_function_name(tree, lineno).lower()
+        if any(word in func_name for word in self._SECURITY_CONTEXT):
+            return True
+        if any(word in func_name for word in self._NON_SECURITY_CONTEXT):
+            return False
+        return True
+
     def _scan_javascript_tree(self, document: TreeSitterDocument, language: str) -> list[RuleHit]:
         hits: list[RuleHit] = []
         for node in self._walk_nodes(document.root_node):
@@ -564,7 +636,11 @@ class SecurityEngine:
                 value_node = node.child_by_field_name("value")
                 if name_node is not None and value_node is not None:
                     name = document.text_for(name_node).strip()
-                    if self._contains_sensitive_name([name]) and self._is_js_literal(value_node, document):
+                    if (
+                        self._contains_sensitive_name([name])
+                        and self._is_js_literal(value_node, document)
+                        and not is_non_secret_value(document.text_for(value_node))
+                    ):
                         hits.append(
                             RuleHit(HARDCODED_PASSWORD, document.relative_path, line_start, line_end, language=language)
                         )
@@ -573,7 +649,11 @@ class SecurityEngine:
                 right = node.child_by_field_name("right")
                 if left is not None and right is not None:
                     name = document.text_for(left).strip()
-                    if self._contains_sensitive_name([name]) and self._is_js_literal(right, document):
+                    if (
+                        self._contains_sensitive_name([name])
+                        and self._is_js_literal(right, document)
+                        and not is_non_secret_value(document.text_for(right))
+                    ):
                         hits.append(
                             RuleHit(HARDCODED_PASSWORD, document.relative_path, line_start, line_end, language=language)
                         )
@@ -628,7 +708,11 @@ class SecurityEngine:
                     if name_node is None or value_node is None:
                         continue
                     name = document.text_for(name_node).strip()
-                    if self._contains_sensitive_name([name]) and self._is_java_literal(value_node, document):
+                    if (
+                        self._contains_sensitive_name([name])
+                        and self._is_java_literal(value_node, document)
+                        and not is_non_secret_value(document.text_for(value_node))
+                    ):
                         hits.append(
                             RuleHit(HARDCODED_PASSWORD, document.relative_path, line_start, line_end, language=language)
                         )
@@ -691,7 +775,11 @@ class SecurityEngine:
                     if decl_node is None or value_node is None:
                         continue
                     var_name = document.text_for(decl_node).strip().lstrip("*").strip()
-                    if self._contains_sensitive_name([var_name]) and self._is_cpp_string_literal(value_node, document):
+                    if (
+                        self._contains_sensitive_name([var_name])
+                        and self._is_cpp_string_literal(value_node, document)
+                        and not is_non_secret_value(document.text_for(value_node))
+                    ):
                         hits.append(RuleHit(
                             HARDCODED_PASSWORD, document.relative_path, line_start, line_end, language=language,
                         ))
@@ -757,7 +845,11 @@ class SecurityEngine:
                     right_children = right.named_children if right.type == "expression_list" else [right]
                     for l_node, r_node in zip(left_children, right_children):
                         var_name = document.text_for(l_node).strip()
-                        if self._contains_sensitive_name([var_name]) and self._is_go_string_literal(r_node, document):
+                        if (
+                            self._contains_sensitive_name([var_name])
+                            and self._is_go_string_literal(r_node, document)
+                            and not is_non_secret_value(document.text_for(r_node))
+                        ):
                             hits.append(RuleHit(
                                 HARDCODED_PASSWORD, document.relative_path, line_start, line_end, language=language,
                             ))
@@ -784,9 +876,17 @@ class SecurityEngine:
                                 if value_children:
                                     value_node = value_children[0]
                                 break
+                    # The `value` field is an expression_list wrapper — unwrap to the literal.
+                    if value_node is not None and value_node.type == "expression_list":
+                        value_children = value_node.named_children
+                        value_node = value_children[0] if value_children else None
                     if name_node is not None and value_node is not None:
                         var_name = document.text_for(name_node).strip()
-                        if self._contains_sensitive_name([var_name]) and self._is_go_string_literal(value_node, document):
+                        if (
+                            self._contains_sensitive_name([var_name])
+                            and self._is_go_string_literal(value_node, document)
+                            and not is_non_secret_value(document.text_for(value_node))
+                        ):
                             hits.append(RuleHit(
                                 HARDCODED_PASSWORD, document.relative_path, line_start, line_end, language=language,
                             ))
@@ -925,6 +1025,12 @@ class SecurityEngine:
     @staticmethod
     def _contains_sensitive_name(names: list[str]) -> bool:
         return any(SENSITIVE_NAME_RE.search(name or "") for name in names)
+
+    @classmethod
+    def _regex_secret_is_placeholder(cls, line: str) -> bool:
+        """True when a regex-matched hardcoded secret line only holds a placeholder."""
+        match = _QUOTED_SECRET_VALUE_RE.search(line)
+        return match is not None and is_non_secret_value(match.group("value"))
 
     @staticmethod
     def _is_string_literal(node: ast.expr | None) -> bool:

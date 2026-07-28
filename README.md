@@ -288,13 +288,25 @@ The cross-function engine uses the **Project Call Graph Index (PCI)** to detect 
 ### How PCI Works
 
 ```
-1. Parse all files        -> extract structure (tree-sitter AST)
-2. Build SymbolTable      -> all functions/methods/classes, O(1) lookup
+1. Parse all files        -> extract structure (tree-sitter AST), incl. class extends/implements
+2. Build SymbolTable      -> all functions/methods/classes + inheritance, O(1) lookup
 3. Resolve imports        -> language-specific import resolvers
 4. Extract call sites     -> from all function bodies
-5. Resolve targets        -> build CallGraph with confidence-weighted edges
+5. Resolve targets        -> build CallGraph with confidence-weighted edges (uses inheritance to resolve super/interface virtual calls)
 6. Compute summaries      -> null/throw/resource/taint per function
 7. Propagate              -> fixpoint along call edges (max 3 passes)
+```
+
+> Inheritance (`extends`/`implements`) is extracted by the parsers and registered in the symbol table, so `self.method()` / `this.method()` calls resolve to methods defined in a parent class (virtual-call resolution). Extraction currently covers Python / Java / JavaScript / TypeScript / Go / C++. Go has no `extends`, so struct/interface **embedding** is treated as a base; C++ supports multiple inheritance, so every base in a `base_class_clause` is registered.
+
+### Debug: export the call graph
+
+Set `CODEGUARDIAN_PCI_DUMP=<path>` before a scan to dump the call graph as JSON
+(nodes, `call_edges`, `type_edges` (inherits/implements)) for troubleshooting
+cross-function resolution. Off by default; no effect on scan performance.
+
+```bash
+CODEGUARDIAN_PCI_DUMP=graph.json codeguardian scan ./src
 ```
 
 ### Detection Rules
@@ -508,6 +520,17 @@ codeguardian baseline .
 # Future scans only report NEW findings above baseline
 codeguardian scan .  # baseline applied automatically
 ```
+
+### Static False-Positive Suppression
+
+Before baseline and AI verification, the scanner applies four deterministic false-positive reductions (no configuration needed):
+
+- **Placeholder / env-reference credential filtering** — `HARDCODED-PASSWORD` only reports real credentials. Placeholder values such as `changeme`, `your_password_here`, `xxx`, and environment references like `$VAR` / `${VAR}` / `%VAR%` are not flagged (applied uniformly across Python / Java / JavaScript / Go / C++ and the regex fallback path).
+- **Low-entropy credential filtering** — `HARDCODED-PASSWORD` also skips low-entropy values: common weak/default words (`admin`, `localhost`, `123456`, ...) and short single-character-class strings (all digits / all lowercase, length < 8) — almost certainly not real credentials; high-entropy values are still reported.
+- **Test-path exemption** — test files (`tests/`, `test/`, `spec/`, `__tests__/` directories, and names like `test_*`, `*_test.go`, `*.spec.ts`) are not part of the deployed attack surface: security rules (hardcoded secrets, injection, etc.) and performance heuristic rules (`SQL-IN-LOOP`, `MISSING-PAGINATION`, `SELECT-STAR-NO-LIMIT`) are suppressed there, so fixtures/mocks do not flood the report.
+- **Context-aware triage (Python)** — `WEAK-HASH` and `INSECURE-RANDOM` use the enclosing function name to judge intent: clearly non-security contexts (`checksum`/`cache`/`etag`/`sample`/`shuffle`/`jitter`/`backoff`, ...) are not reported; security contexts (`password`/`token`/`secret`/`verify`, ...) or undecidable ones still are (conservative). On Python these two rules run only on the AST path so the context-free regex cannot re-report them.
+
+The net effect of these reductions is continuously measured by `benchmark/fp_corpus` (a synthetic labeled false-positive corpus); run `pytest tests/test_fp_benchmark.py` for precision/recall.
 
 ---
 

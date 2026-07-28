@@ -11,7 +11,12 @@ import re
 from pathlib import Path
 
 from codeguardian.core.context import ScanContext
-from codeguardian.engines.rule_helpers import RuleHit, RuleSpec, build_finding
+from codeguardian.engines.rule_helpers import (
+    RuleHit,
+    RuleSpec,
+    build_finding,
+    is_placeholder_secret,
+)
 from codeguardian.engines.rule_registry import filter_rule_hits, register_rules
 from codeguardian.models.enums import Confidence, Severity
 from codeguardian.models.scan import EngineResult
@@ -167,12 +172,8 @@ _SECRET_VALUE_PATTERN = re.compile(
     (?P<value>[^\s'"#\n]{8,})  # at least 8 chars, no whitespace/quotes/comments
     """,
 )
-# Values that are placeholders, not real secrets
-_PLACEHOLDER_VALUES = {
-    "changeme", "password", "secret", "your_secret_here",
-    "your_api_key_here", "xxx", "todo", "fixme", "placeholder",
-    "your_password_here", "replace_me", "none", "null", "undefined",
-}
+# Placeholder / env-reference filtering is shared via
+# codeguardian.engines.rule_helpers.is_placeholder_secret.
 
 # Debug mode patterns
 _DEBUG_PATTERNS = [
@@ -270,13 +271,7 @@ class ConfigRiskEngine:
                 if match:
                     value = match.group("value").strip("'\"")
                     # Filter out placeholders and env var references
-                    if (
-                        value.lower() not in _PLACEHOLDER_VALUES
-                        and not value.startswith("${")
-                        and not value.startswith("$")
-                        and not value.startswith("%")
-                        and len(value) >= 8
-                    ):
+                    if not is_placeholder_secret(value) and len(value) >= 8:
                         hits.append(RuleHit(
                             rule=HARDCODED_SECRET,
                             file_path=rel_path,

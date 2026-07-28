@@ -11,7 +11,7 @@ Verifies new detection capabilities added to complete the coverage matrix:
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from codeguardian.config.loader import load_app_config
+from codeguardian.config.defaults import default_config
 from codeguardian.core.context import ScanContext
 from codeguardian.engines.defect_engine import DefectEngine
 
@@ -571,7 +571,7 @@ function example() {
         (root / "Demo.java").write_text(java_source.strip() + "\n", encoding="utf-8")
         (root / "sample.js").write_text(js_source.strip() + "\n", encoding="utf-8")
 
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
 
     by_file: dict[str, set[str]] = {}
@@ -610,7 +610,7 @@ async def _scan_single_file(filename: str, source: str):
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / filename).write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
     return result.findings
 

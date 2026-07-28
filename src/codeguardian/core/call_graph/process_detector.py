@@ -396,8 +396,15 @@ class ProcessDetector:
             if summary is None:
                 continue
 
-            # Write operations
-            if summary.writes_fields or summary.is_sink:
+            # Write operations (transaction-relevant only).
+            # NOTE: ``writes_fields`` (in-memory ``this.x = y`` — POJO setters) is
+            # deliberately NOT counted here: instance-field mutation is not
+            # persistence and never needs a DB transaction. Counting it caused
+            # DTO constructors (e.g. GridRes/GridRowData that only call setters)
+            # to be flagged as BIZ-NO-TRANSACTION-BOUNDARY. Real writes are
+            # detected via ``is_sink`` (SQL/command sinks) and via write-token
+            # method names (save/insert/update/persist/commit...) below.
+            if summary.is_sink:
                 process.write_operations.append(qname)
 
             # External calls

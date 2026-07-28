@@ -34,6 +34,13 @@ class ParsedClass:
     kind: str = "class"
     methods: list[str] = field(default_factory=list)
     fields: list[str] = field(default_factory=list)
+    # Field name -> declared type name (e.g. {"accountDao": "AccountDao"}).
+    # Used by PCI to resolve `field.method()` receiver types precisely.
+    field_types: dict[str, str] = field(default_factory=dict)
+    # Direct superclass names (extends). Interface-only bases go in `interfaces`.
+    bases: list[str] = field(default_factory=list)
+    # Implemented/extended interface names (implements, TS `implements`).
+    interfaces: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)

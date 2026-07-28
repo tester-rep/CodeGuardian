@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from codeguardian.config.loader import load_app_config
+from codeguardian.config.defaults import default_config
 from codeguardian.core.context import ScanContext
 from codeguardian.core.orchestrator import Orchestrator
 from codeguardian.core.planner import DEEP_ENABLED_ENGINES, VALID_DIMENSIONS, build_plan
@@ -18,7 +18,7 @@ from codeguardian.models.scan import ScanRequest
 def test_build_plan_filters_enabled_engines_by_dimension() -> None:
     ctx = ScanContext(
         project_root=".",
-        config=load_app_config(None),
+        config=default_config(),
         dimensions=["security"],
     )
 
@@ -34,7 +34,7 @@ def test_build_plan_filters_enabled_engines_by_dimension() -> None:
 def test_build_plan_deep_mode_only_uses_registered_engines() -> None:
     ctx = ScanContext(
         project_root=".",
-        config=load_app_config(None),
+        config=default_config(),
         depth="deep",
     )
 
@@ -46,7 +46,7 @@ def test_build_plan_deep_mode_only_uses_registered_engines() -> None:
 def test_build_plan_rejects_unsupported_dimensions() -> None:
     ctx = ScanContext(
         project_root=".",
-        config=load_app_config(None),
+        config=default_config(),
         dimensions=["observability"],
     )
 
@@ -58,7 +58,7 @@ def test_build_plan_rejects_unsupported_dimensions() -> None:
 def test_build_plan_supports_performance_dimension() -> None:
     ctx = ScanContext(
         project_root=".",
-        config=load_app_config(None),
+        config=default_config(),
         dimensions=["performance"],
     )
 
@@ -74,7 +74,7 @@ def test_build_plan_supports_performance_dimension() -> None:
 def test_build_plan_supports_testing_dimension() -> None:
     ctx = ScanContext(
         project_root=".",
-        config=load_app_config(None),
+        config=default_config(),
         dimensions=["testing"],
     )
 
@@ -87,7 +87,7 @@ def test_build_plan_supports_testing_dimension() -> None:
 def test_build_plan_supports_architecture_dimension() -> None:
     ctx = ScanContext(
         project_root=".",
-        config=load_app_config(None),
+        config=default_config(),
         dimensions=["architecture"],
         depth="deep",
     )
@@ -100,7 +100,7 @@ def test_build_plan_supports_architecture_dimension() -> None:
 
 def test_build_plan_default_profile_excludes_config_risk() -> None:
     """Default profile must not enable config_risk — configs are opt-in only."""
-    ctx = ScanContext(project_root=".", config=load_app_config(None))
+    ctx = ScanContext(project_root=".", config=default_config())
 
     plan = build_plan(ctx)
 
@@ -111,7 +111,7 @@ def test_build_plan_config_dimension_enables_config_risk() -> None:
     """--dimensions config explicitly opts into the config_risk engine."""
     ctx = ScanContext(
         project_root=".",
-        config=load_app_config(None),
+        config=default_config(),
         dimensions=["config"],
     )
 
@@ -123,7 +123,7 @@ def test_build_plan_config_dimension_enables_config_risk() -> None:
 def test_build_plan_supports_all_keyword() -> None:
     ctx = ScanContext(
         project_root=".",
-        config=load_app_config(None),
+        config=default_config(),
         dimensions=["all"],
         depth="deep",
     )
@@ -138,7 +138,7 @@ def test_build_plan_uses_incremental_target_files() -> None:
 
     ctx = ScanContext(
         project_root=".",
-        config=load_app_config(None),
+        config=default_config(),
         incremental=True,
         target_files=["sample.py"],
     )
@@ -159,7 +159,7 @@ def test_deep_review_file_map_falls_back_without_structure_results() -> None:
 
         ctx = ScanContext(
             project_root=str(root),
-            config=load_app_config(None),
+            config=default_config(),
             depth="deep",
             dimensions=["defects"],
             languages=["typescript"],
@@ -178,7 +178,7 @@ async def test_orchestrator_respects_configured_report_output_dir() -> None:
         root = Path(tmpdir)
         (root / "sample.py").write_text("print('hello')\n", encoding="utf-8")
 
-        config = load_app_config(None)
+        config = default_config()
         config.reports.output_dir = "custom-reports"
         orchestrator = Orchestrator(config)
 
@@ -209,7 +209,7 @@ async def test_orchestrator_only_renders_requested_reports(monkeypatch: pytest.M
         root = Path(tmpdir)
         (root / "sample.py").write_text("print('hello')\n", encoding="utf-8")
 
-        orchestrator = Orchestrator(load_app_config(None))
+        orchestrator = Orchestrator(default_config())
         await orchestrator.run_scan(
             ScanRequest(
                 project_path=root,
@@ -226,7 +226,7 @@ async def test_orchestrator_uses_configured_risk_weights() -> None:
         root = Path(tmpdir)
         (root / "sample.py").write_text("print('hello')\n", encoding="utf-8")
 
-        default_orchestrator = Orchestrator(load_app_config(None))
+        default_orchestrator = Orchestrator(default_config())
         default_result = await default_orchestrator.run_scan(
             ScanRequest(
                 project_path=root,
@@ -235,7 +235,7 @@ async def test_orchestrator_uses_configured_risk_weights() -> None:
             )
         )
 
-        weighted_config = load_app_config(None)
+        weighted_config = default_config()
         weighted_config.risk.weights = {"severity": 0.0}
         weighted_orchestrator = Orchestrator(weighted_config)
         weighted_result = await weighted_orchestrator.run_scan(
@@ -254,7 +254,7 @@ async def test_orchestrator_populates_ai_summary_and_release_conclusion() -> Non
         root = Path(tmpdir)
         (root / "sample.py").write_text("print('hello')\n", encoding="utf-8")
 
-        result = await Orchestrator(load_app_config(None)).run_scan(
+        result = await Orchestrator(default_config()).run_scan(
             ScanRequest(
                 project_path=root,
                 report_formats=["json"],
@@ -292,7 +292,7 @@ async def test_orchestrator_uses_ai_router_when_enabled(monkeypatch: pytest.Monk
         root = Path(tmpdir)
         (root / "sample.py").write_text("print('hello')\n", encoding="utf-8")
 
-        config = load_app_config(None)
+        config = default_config()
         config.ai.enabled = True
         result = await Orchestrator(config).run_scan(
             ScanRequest(
@@ -315,7 +315,7 @@ async def test_orchestrator_emits_project_risk_metrics_for_core_modules() -> Non
         (root / "core").mkdir()
         (root / "core" / "sample.py").write_text("print('hello')\n", encoding="utf-8")
 
-        result = await Orchestrator(load_app_config(None)).run_scan(
+        result = await Orchestrator(default_config()).run_scan(
             ScanRequest(
                 project_path=root,
                 report_formats=[],
@@ -340,7 +340,7 @@ async def test_orchestrator_populates_module_dimension_scores() -> None:
         (root / "core").mkdir()
         (root / "core" / "sample.py").write_text("print('hello')\n", encoding="utf-8")
 
-        result = await Orchestrator(load_app_config(None)).run_scan(
+        result = await Orchestrator(default_config()).run_scan(
             ScanRequest(
                 project_path=root,
                 report_formats=[],
@@ -378,7 +378,7 @@ async def test_orchestrator_populates_module_special_report_fields() -> None:
             encoding="utf-8",
         )
 
-        config = load_app_config(None)
+        config = default_config()
         config.test.coverage_files = ["coverage.json"]
         result = await Orchestrator(config).run_scan(
             ScanRequest(

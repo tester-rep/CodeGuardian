@@ -13,7 +13,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from codeguardian.core.context import ScanContext
-from codeguardian.engines.rule_helpers import RuleHit, RuleSpec, build_finding
+from codeguardian.engines.rule_helpers import (
+    RuleHit,
+    RuleSpec,
+    build_finding,
+    is_suppressed_by_inline_comment,
+    is_test_file_path,
+)
 from codeguardian.engines.rule_registry import filter_rule_hits, register_rules
 from codeguardian.languages import (
     EXTENSION_LANGUAGE_MAP,
@@ -1140,29 +1146,10 @@ class DefectEngine:
     _TEST_SUPPRESSED_RULES = frozenset({
         "PRINT-DEBUG", "ASSERT-USED", "DEAD-CODE",
     })
-    _TEST_PATH_INDICATORS = frozenset({
-        "test_", "tests/", "test/", "spec/", "specs/", "__tests__/",
-        "_test.go", "_test.py", "_test.java", "_test.js", "_test.ts",
-        ".spec.js", ".spec.ts", ".test.js", ".test.ts",
-    })
-
     @staticmethod
     def _is_test_file(rel_path: str) -> bool:
-        """Heuristic: detect if a file is a test file based on path patterns."""
-        lower = rel_path.lower().replace("\\", "/")
-        # Check directory indicators
-        parts = lower.split("/")
-        if any(p in {"test", "tests", "spec", "specs", "__tests__"} for p in parts[:-1]):
-            return True
-        # Check filename indicators
-        filename = parts[-1] if parts else ""
-        if filename.startswith("test_") or filename.startswith("spec_"):
-            return True
-        for suffix in ("_test.go", "_test.py", "_test.java", "_test.js", "_test.ts",
-                        ".spec.js", ".spec.ts", ".test.js", ".test.ts"):
-            if filename.endswith(suffix):
-                return True
-        return False
+        """Heuristic: detect if a file is a test file (delegates to shared helper)."""
+        return is_test_file_path(rel_path)
 
     async def analyze(self, ctx: ScanContext) -> EngineResult:
         root = Path(ctx.project_root)
@@ -1194,10 +1181,12 @@ class DefectEngine:
             hits = filter_rule_hits(hits, ctx.config.rules)
 
             # Suppress noisy rules in test files
-            is_test = self._is_test_file(rel_path)
+            is_test = is_test_file_path(rel_path)
             seen: set[tuple[str, str, int, int]] = set()
             for hit in hits:
                 if is_test and hit.rule.rule_id in self._TEST_SUPPRESSED_RULES:
+                    continue
+                if is_suppressed_by_inline_comment(hit.rule.rule_id, lines, hit.line_start):
                     continue
                 key = (hit.rule.rule_id, hit.file_path, hit.line_start, hit.line_end)
                 if key in seen:
@@ -1720,10 +1709,17 @@ class DefectEngine:
                 target = child.targets[0]
                 if isinstance(target, ast.Name) and isinstance(child.value, ast.Call):
                     if isinstance(child.value.func, ast.Attribute) and child.value.func.attr in self._NONE_RETURNING_METHODS:
+                        # `.get(key, default)` / `.get(key, default=...)` never returns None.
+                        if child.value.func.attr == "get" and (len(child.value.args) >= 2 or child.value.keywords):
+                            continue
                         maybe_none_vars[target.id] = child.lineno
 
             # Track None guards: `if x is not None`, `if x:`, `if x is None`
             if isinstance(child, ast.If):
+                guarded_names.update(self._extract_none_checked_names(child.test))
+            # Ternary guard: `x.attr if x else default` — an expression-level guard
+            # (ast.IfExp), distinct from statement-level `if` above.
+            if isinstance(child, ast.IfExp):
                 guarded_names.update(self._extract_none_checked_names(child.test))
 
         # Now find dereferences of maybe_none_vars without guards
@@ -4717,20 +4713,29 @@ class DefectEngine:
         )
 
 
-        for pattern, sink_desc in (
-            (dangerous_chain, "method call on nullable return value"),
-            (parse_direct, "parseXxx call on nullable return value"),
-        ):
-            for match in pattern.finditer(document.source):
-                line = document.source[:match.start()].count("\n") + 1
-                call_text = match.group("call").strip()
-                hits.append(RuleHit(
-                    POSSIBLE_NONE_DEREF, document.relative_path,
-                    line, line, language=language,
-                    message=f"`{call_text}` may return null and is used by {sink_desc}; add null/default handling first.",
-                ))
-
         for method_node in self._java_method_nodes(document):
+            method_text = document.text_for(method_node)
+            method_start, _ = document.line_range(method_node)
+            for pattern, sink_desc in (
+                (dangerous_chain, "method call on nullable return value"),
+                (parse_direct, "parseXxx call on nullable return value"),
+            ):
+                for match in pattern.finditer(method_text):
+                    call_text = match.group("call").strip()
+                    # The greedy `nullable_call` sub-pattern can capture one extra
+                    # trailing ')'. Balance parentheses so guard matching / message
+                    # use the exact expression (e.g. `map.get("k")`, not `map.get("k"))`).
+                    while call_text.endswith(")") and call_text.count(")") > call_text.count("("):
+                        call_text = call_text[:-1]
+                    # Skip if the same nullable expression is null-guarded in scope.
+                    if self._java_expr_is_guarded(method_text, call_text):
+                        continue
+                    line = method_start + method_text[:match.start()].count("\n")
+                    hits.append(RuleHit(
+                        POSSIBLE_NONE_DEREF, document.relative_path,
+                        line, line, language=language,
+                        message=f"`{call_text}` may return null and is used by {sink_desc}; add null/default handling first.",
+                    ))
             hits.extend(self._scan_java_nullable_vars_in_method(document, method_node, nullable_expr, language))
         return hits
 
@@ -4890,15 +4895,42 @@ class DefectEngine:
             ))
         return hits
 
+    _JAVA_MUTABLE_FIELD_TYPES = frozenset({
+        "Map", "HashMap", "ConcurrentHashMap", "LinkedHashMap", "TreeMap", "Hashtable",
+        "List", "ArrayList", "LinkedList", "Vector",
+        "Set", "HashSet", "TreeSet", "LinkedHashSet",
+        "Properties", "StringBuilder", "StringBuffer",
+    })
+
     def _scan_java_static_mutable_state(self, document: TreeSitterDocument, language: str) -> list[RuleHit]:
+        """Detect non-final static mutable FIELDS.
+
+        Uses the AST ``field_declaration`` node so that static METHODS whose
+        signature/body merely mention a mutable type (e.g.
+        ``public static void copyMap(Map dest, Map src)``) are not misclassified.
+        """
         hits: list[RuleHit] = []
-        mutable_types = r"(?:Map|HashMap|ConcurrentHashMap|List|ArrayList|Set|HashSet|Properties|StringBuilder|StringBuffer)"
-        pattern = re.compile(rf"\bstatic\b(?![^;]*\bfinal\b)[^;]*\b{mutable_types}\b[^;]*;")
-        for match in pattern.finditer(document.source):
-            line = document.source[:match.start()].count("\n") + 1
+        for node in self._walk_nodes(document.root_node):
+            if node.type != "field_declaration":
+                continue
+            modifier_tokens: set[str] = set()
+            for child in node.children:
+                if child.type == "modifiers":
+                    modifier_tokens = set(document.text_for(child).split())
+                    break
+            if "static" not in modifier_tokens or "final" in modifier_tokens:
+                continue
+            type_node = node.child_by_field_name("type")
+            if type_node is None:
+                continue
+            type_text = document.text_for(type_node).strip()
+            base_type = re.split(r"[<\[]", type_text, maxsplit=1)[0].strip()
+            if base_type not in self._JAVA_MUTABLE_FIELD_TYPES:
+                continue
+            line_start, line_end = document.line_range(node)
             hits.append(RuleHit(
                 STATIC_MUTABLE_SHARED_STATE, document.relative_path,
-                line, line, language=language,
+                line_start, line_end, language=language,
                 message="Non-final static mutable state is shared across threads/tests; define synchronization or use immutable/concurrent alternatives.",
             ))
         return hits
@@ -5231,6 +5263,28 @@ class DefectEngine:
 
         var = re.escape(var_name)
         return re.search(rf"(?:{var}\s*(?:!=|==)\s*null|null\s*(?:!=|==)\s*{var}|Objects\.requireNonNull\s*\(\s*{var}\b|Optional\.ofNullable\s*\(\s*{var}\b)", text) is not None
+
+    @staticmethod
+    def _java_expr_is_guarded(text: str, call_text: str) -> bool:
+        """Whether a nullable call expression is guarded within the enclosing scope.
+
+        Covers the common Java idiom ``if (map.get(k) != null) { ...map.get(k)... }``
+        where the SAME expression is null-checked, and ``map.containsKey(k)`` guards
+        for ``map.get(k)`` uses.
+        """
+        expr = re.escape(call_text)
+        if re.search(rf"{expr}\s*(?:!=|==)\s*null", text):
+            return True
+        if re.search(rf"null\s*(?:!=|==)\s*{expr}", text):
+            return True
+        # containsKey guard for a `<receiver>.get(<key>)` expression.
+        m = re.search(r"^(?P<recv>.+?)\.\s*get\s*\(\s*(?P<key>.+?)\s*\)\s*$", call_text)
+        if m:
+            recv = re.escape(m.group("recv").strip())
+            key = re.escape(m.group("key").strip())
+            if re.search(rf"{recv}\s*\.\s*containsKey\s*\(\s*{key}\s*\)", text):
+                return True
+        return False
 
     @staticmethod
     def _c_like_has_zero_check(text: str, var_name: str) -> bool:

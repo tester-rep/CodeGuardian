@@ -61,6 +61,10 @@ class Finding(BaseModel):
     cwe_ids: list[str] = Field(default_factory=list)  # CWE references
     tags: list[str] = Field(default_factory=list)
 
+    # Structured metadata attached by cross-function / impact / process enrichment
+    # (e.g. impact_score, affected_callers, resource_kind). Values are stringified.
+    metadata: dict[str, str] = Field(default_factory=dict)
+
     @property
     def evidence_rank(self) -> int:
         return _EVIDENCE_LEVEL_RANK.get(self.evidence_level, 0)

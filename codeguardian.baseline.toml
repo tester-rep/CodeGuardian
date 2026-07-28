@@ -1,0 +1,25 @@
+[scan]
+depth = "standard"
+languages = ["java"]
+exclude_paths = ["build/**", "buildproject/**", "lib/**", "reports/**"]
+
+[reports]
+formats = ["json"]
+output_dir = "reports"
+
+[ai]
+enabled = false
+
+[ai_verify]
+enabled = false
+
+[rules]
+enabled = []
+disabled = []
+include_tags = []
+exclude_tags = []
+min_severity = "info"
+baseline_path = ""
+
+[semgrep]
+enabled = false

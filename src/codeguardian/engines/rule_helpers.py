@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from codeguardian.models.common import Location
@@ -199,3 +200,100 @@ def _build_root_cause(hit: RuleHit, detail: str) -> str:
         parts.append(f"详细说明: {rule.reference_url}")
 
     return "\n".join(parts)
+
+
+# ── False-positive suppression helpers ───────────────────────────────────
+
+# Values that are placeholders or environment references, not real secrets.
+PLACEHOLDER_SECRET_VALUES = frozenset({
+    "changeme", "password", "secret", "your_secret_here",
+    "your_api_key_here", "xxx", "todo", "fixme", "placeholder",
+    "your_password_here", "replace_me", "none", "null", "undefined",
+})
+
+
+def is_placeholder_secret(value: str) -> bool:
+    """True when a hardcoded-looking secret value is actually a placeholder,
+    an environment-variable reference (``$VAR`` / ``${VAR}`` / ``%VAR%``),
+    or an empty/whitespace string."""
+    stripped = value.strip().strip("\"'`").strip()
+    if not stripped:
+        return True
+    if stripped.lower() in PLACEHOLDER_SECRET_VALUES:
+        return True
+    return stripped.startswith(("${", "$", "%"))
+
+
+# Common weak/default words that are almost never real credentials.
+_LOW_ENTROPY_SECRET_VALUES = frozenset({
+    "admin", "administrator", "root", "localhost", "guest", "user", "test",
+    "demo", "default", "qwerty", "letmein", "welcome", "12345", "123456",
+    "123456789", "111111", "000000", "123321", "654321",
+})
+
+
+def is_low_entropy_secret(value: str) -> bool:
+    """True when a hardcoded-looking value is low-entropy — a common weak/default
+    word, or a short single-character-class string (all digits / all lowercase),
+    so it is almost certainly not a real credential."""
+    stripped = value.strip().strip("\"'`").strip().lower()
+    if not stripped:
+        return False
+    if stripped in _LOW_ENTROPY_SECRET_VALUES:
+        return True
+    return len(stripped) < 8 and (stripped.isdigit() or (stripped.isalpha() and stripped.islower()))
+
+
+def is_non_secret_value(value: str) -> bool:
+    """True when a hardcoded-looking value is NOT a real credential — either a
+    placeholder/env-reference or a low-entropy string. Unified FP filter for
+    HARDCODED-PASSWORD across all language branches."""
+    return is_placeholder_secret(value) or is_low_entropy_secret(value)
+
+
+_TEST_DIR_NAMES = frozenset({"test", "tests", "spec", "specs", "__tests__"})
+_TEST_FILE_PREFIXES = ("test_", "spec_")
+_TEST_FILE_SUFFIXES = (
+    "_test.go", "_test.py", "_test.java", "_test.js", "_test.ts",
+    ".spec.js", ".spec.ts", ".test.js", ".test.ts",
+)
+
+
+def is_test_file_path(rel_path: str) -> bool:
+    """Heuristic: detect a test file from its path (directory or filename)."""
+    lower = rel_path.lower().replace("\\", "/")
+    parts = lower.split("/")
+    if any(p in _TEST_DIR_NAMES for p in parts[:-1]):
+        return True
+    filename = parts[-1] if parts else ""
+    if filename.startswith(_TEST_FILE_PREFIXES):
+        return True
+    return filename.endswith(_TEST_FILE_SUFFIXES)
+
+
+# Matches an inline suppression marker, e.g.:
+#   # codeguardian: ignore RULE-ID[, OTHER-ID]
+#   # noqa: RULE-ID        (also bare `# noqa` / `# codeguardian: ignore`)
+#   // codeguardian: ignore RULE-ID   (C-style comments)
+_INLINE_IGNORE_RE = re.compile(
+    r"(?:#|//)\s*(?:codeguardian:\s*ignore|noqa)\b:?\s*(?P<ids>[A-Z0-9_,\s\-]*)",
+    re.IGNORECASE,
+)
+
+
+def is_suppressed_by_inline_comment(rule_id: str, lines: list[str], line_no: int) -> bool:
+    """True when the hit line or the line directly above carries an inline
+    suppression comment covering this rule.
+
+    A marker with no rule ids (bare ``# noqa`` / ``# codeguardian: ignore``)
+    suppresses every rule on that line.
+    """
+    for ln in (line_no, line_no - 1):
+        if 1 <= ln <= len(lines):
+            match = _INLINE_IGNORE_RE.search(lines[ln - 1])
+            if match is None:
+                continue
+            ids = {tok.strip().upper() for tok in re.split(r"[,\s]+", match.group("ids")) if tok.strip()}
+            if not ids or rule_id.upper() in ids:
+                return True
+    return False

@@ -7,6 +7,7 @@ then attaches them to ScanContext for use by detection engines.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -139,7 +140,7 @@ class PCIBuilder:
         # Save cache for next run
         self._save_cache(cache, file_lines, language_map, symbol_table, summaries)
 
-        return PCIResult(
+        result = PCIResult(
             symbol_table=symbol_table,
             call_graph=call_graph,
             function_summaries=summaries,
@@ -147,6 +148,18 @@ class PCIBuilder:
             build_time_seconds=total_time,
             file_count=len(file_structures),
         )
+
+        # Opt-in debug dump: set CODEGUARDIAN_PCI_DUMP=<path> to write graph.json.
+        # Off by default — no effect on the scan hot path.
+        dump_path = os.environ.get("CODEGUARDIAN_PCI_DUMP")
+        if dump_path:
+            try:
+                result.export_debug_json(dump_path)
+                logger.info("PCI debug graph written to %s", dump_path)
+            except OSError as e:
+                logger.warning("PCI debug dump failed (%s): %s", dump_path, e)
+
+        return result
 
     def _parse_project_files(
         self,
@@ -478,29 +491,28 @@ class PCIBuilder:
                         if m.name == callee_name:
                             return [(m.qualified_name, 0.85)]
 
+        # Field-type resolution: receiver matches a declared field of the
+        # caller's class (e.g. ``accountDao.deduct()`` where the class declares
+        # ``private final AccountDao accountDao;``). The declared field type is
+        # authoritative — more reliable than the name heuristic below — so this
+        # runs before the ``receiver_type`` branch and yields higher confidence.
+        field_type = self._field_type_of_receiver(site, symbol_table)
+        if field_type:
+            resolved = self._resolve_typed_receiver(
+                field_type, callee_name, site, symbol_table, file_imports,
+                found_confidence=0.85, declared_confidence=0.80, global_confidence=0.80,
+            )
+            if resolved:
+                return resolved
+
         # If receiver type is known (from import or uppercase heuristic)
         if site.receiver_type and site.receiver_type != "__self__":
-            # Look up the type
-            type_name = site.receiver_type
-            # Check imports for the type
-            imports = file_imports.get(site.caller_file, [])
-            for imp in imports:
-                if imp.local_name == type_name:
-                    method_qname = f"{imp.qualified_name}.{callee_name}"
-                    target = symbol_table.lookup(method_qname)
-                    if target:
-                        return [(target.qualified_name, 0.80)]
-                    return [(method_qname, 0.70)]
-
-            # Global type lookup
-            type_matches = symbol_table.lookup_by_name(type_name)
-            class_matches = [s for s in type_matches if s.kind in (SymbolKind.CLASS, SymbolKind.INTERFACE)]
-            if class_matches:
-                for cls in class_matches[:2]:
-                    methods = symbol_table.lookup_methods(cls.qualified_name)
-                    for m in methods:
-                        if m.name == callee_name:
-                            return [(m.qualified_name, 0.75)]
+            resolved = self._resolve_typed_receiver(
+                site.receiver_type, callee_name, site, symbol_table, file_imports,
+                found_confidence=0.80, declared_confidence=0.70, global_confidence=0.75,
+            )
+            if resolved:
+                return resolved
 
         # Fallback: look for any method with this name
         # Check if receiver matches a known import (e.g., `dao.findUser()`)
@@ -518,6 +530,81 @@ class PCIBuilder:
         method_matches = [s for s in all_matches if s.kind == SymbolKind.METHOD]
         if len(method_matches) == 1:
             return [(method_matches[0].qualified_name, 0.50)]
+
+        return []
+
+    def _field_type_of_receiver(
+        self,
+        site: RawCallSite,
+        symbol_table: SymbolTable,
+    ) -> str | None:
+        """Return the declared type of ``site.receiver`` when it is a field of the
+        caller's class (handles both ``field`` and ``this.field`` receivers).
+
+        Walks the caller's class hierarchy so inherited fields resolve too.
+        Returns ``None`` when the receiver is not a known field.
+        """
+        receiver = site.receiver or ""
+        if not receiver:
+            return None
+        # Normalise `this.accountDao` -> `accountDao`
+        field_name = receiver.split(".", 1)[1] if receiver.startswith("this.") else receiver
+        if "." in field_name:
+            # Chained access (a.b.c) — not a simple field reference.
+            return None
+
+        caller_sym = symbol_table.lookup(site.caller_qualified_name)
+        if not caller_sym or not caller_sym.class_name:
+            return None
+        class_qname = (
+            f"{caller_sym.module_path}.{caller_sym.class_name}"
+            if caller_sym.module_path else caller_sym.class_name
+        )
+
+        # Own class first, then inherited fields up the hierarchy.
+        for cls_qname in [class_qname, *symbol_table.get_class_hierarchy(class_qname)[1:]]:
+            cls_sym = symbol_table.lookup(cls_qname)
+            if cls_sym and field_name in cls_sym.field_types:
+                return cls_sym.field_types[field_name]
+        return None
+
+    def _resolve_typed_receiver(
+        self,
+        type_name: str,
+        callee_name: str,
+        site: RawCallSite,
+        symbol_table: SymbolTable,
+        file_imports: dict[str, list[ResolvedImport]],
+        *,
+        found_confidence: float,
+        declared_confidence: float,
+        global_confidence: float,
+    ) -> list[tuple[str, float]]:
+        """Resolve ``receiver.method()`` given the receiver's (declared) type name.
+
+        Shared by the field-type branch and the ``receiver_type`` heuristic branch;
+        the confidence levels differ because a declared field type is more
+        authoritative than a name heuristic.
+        """
+        # Check imports for the type
+        imports = file_imports.get(site.caller_file, [])
+        for imp in imports:
+            if imp.local_name == type_name:
+                method_qname = f"{imp.qualified_name}.{callee_name}"
+                target = symbol_table.lookup(method_qname)
+                if target:
+                    return [(target.qualified_name, found_confidence)]
+                return [(method_qname, declared_confidence)]
+
+        # Global type lookup
+        type_matches = symbol_table.lookup_by_name(type_name)
+        class_matches = [s for s in type_matches if s.kind in (SymbolKind.CLASS, SymbolKind.INTERFACE)]
+        if class_matches:
+            for cls in class_matches[:2]:
+                methods = symbol_table.lookup_methods(cls.qualified_name)
+                for m in methods:
+                    if m.name == callee_name:
+                        return [(m.qualified_name, global_confidence)]
 
         return []
 
@@ -730,3 +817,36 @@ class PCIResult:
     @property
     def is_empty(self) -> bool:
         return self.symbol_table.size == 0
+
+    def to_debug_dict(self) -> dict:
+        """Serialise the PCI (call edges + inheritance edges) for debugging."""
+        graph_dict = self.call_graph.to_debug_dict()
+
+        type_edges: list[dict] = []
+        for cls in self.symbol_table.all_classes():
+            for parent in cls.parent_classes:
+                type_edges.append(
+                    {"type": "inherits", "source": cls.qualified_name, "target": parent},
+                )
+            for iface in cls.interfaces:
+                type_edges.append(
+                    {"type": "implements", "source": cls.qualified_name, "target": iface},
+                )
+
+        return {
+            "file_count": self.file_count,
+            "build_time_seconds": round(self.build_time_seconds, 3),
+            **graph_dict,
+            "type_edges": type_edges,
+        }
+
+    def export_debug_json(self, path: str | Path) -> None:
+        """Write the debug dict to ``path`` as pretty-printed JSON."""
+        import json
+
+        out = Path(path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(
+            json.dumps(self.to_debug_dict(), indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )

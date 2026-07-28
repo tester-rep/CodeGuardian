@@ -72,7 +72,16 @@ class TreeSitterDocument:
         return self.tree.root_node
 
     def text_for(self, node: TreeSitterNode) -> str:
-        return self.source[node.start_byte:node.end_byte]
+        # tree-sitter offsets (start_byte/end_byte) are BYTE offsets, but
+        # ``self.source`` is a ``str`` indexed by CHARACTERS. Slicing the str with
+        # byte offsets misaligns extraction for any file containing non-ASCII
+        # (multi-byte UTF-8) characters — e.g. Chinese comments — corrupting every
+        # symbol name/type extracted after the first such character. Use the node's
+        # own byte content, which is always the exact source bytes for that node.
+        raw = node.text
+        if raw is not None:
+            return raw.decode("utf-8", errors="ignore")
+        return self.source.encode("utf-8")[node.start_byte:node.end_byte].decode("utf-8", errors="ignore")
 
     def line_range(self, node: TreeSitterNode) -> tuple[int, int]:
         return node.start_point.row + 1, node.end_point.row + 1

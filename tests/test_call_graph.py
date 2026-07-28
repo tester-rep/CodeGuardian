@@ -434,7 +434,10 @@ class TestModulePath:
         assert _file_to_module_path("src/app/__init__.py", "python") == "app"
 
     def test_java_module_path(self):
-        assert _file_to_module_path("src/main/java/com/app/dao/UserDAO.java", "java") == "com.app.dao.UserDAO"
+        # module_path is the *package* (directory path); the file's class name is
+        # NOT part of it. Including it produced malformed qualified names such as
+        # com.app.dao.UserDAO.UserDAO.method and broke import/type matching.
+        assert _file_to_module_path("src/main/java/com/app/dao/UserDAO.java", "java") == "com.app.dao"
 
     def test_go_module_path(self):
         assert _file_to_module_path("pkg/dao/user.go", "go") == "pkg/dao"

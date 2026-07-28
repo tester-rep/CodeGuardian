@@ -29,9 +29,12 @@ def test_release_gate_evaluates_common_conditions() -> None:
         rule_id="SQL-INJECTION-RISK",
         blocks_release=True,
     )
+    # Gate derives the score from findings via RiskScorer (not from the
+    # ProjectProfile.overall_score attribute); 4 blocking-critical findings
+    # push the production score to ~55.6 (< 60) so minimum_score fires.
     result = ScanResult(
         project_profile=ProjectProfile(project_name="demo", overall_score=55.0),
-        findings=[finding],
+        findings=[finding] * 4,
     )
 
     evaluation = gate.evaluate(result)

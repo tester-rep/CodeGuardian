@@ -318,3 +318,28 @@ class CallGraph:
     def direct_callers(self, symbol: str) -> list[str]:
         """Get caller names only (no edge metadata). Convenience method."""
         return [e.caller for e in self._reverse.get(symbol, [])]
+
+    def to_debug_dict(self) -> dict:
+        """Serialise the call graph to a plain dict for JSON debug export.
+
+        Not used in the scan hot path — intended for troubleshooting PCI
+        resolution (see PCIResult.export_debug_json).
+        """
+        edges = [
+            {
+                "caller": e.caller,
+                "callee": e.callee,
+                "line": e.call_site_line,
+                "file": e.call_site_file,
+                "form": e.call_form.value,
+                "confidence": round(e.confidence, 3),
+            }
+            for edge_list in self._forward.values()
+            for e in edge_list
+        ]
+        return {
+            "node_count": self.node_count,
+            "edge_count": self.edge_count,
+            "nodes": sorted(self._nodes),
+            "call_edges": edges,
+        }

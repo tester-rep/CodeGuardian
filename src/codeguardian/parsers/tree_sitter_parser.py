@@ -161,6 +161,7 @@ class TreeSitterSourceParser:
     ) -> ParsedClass:
         methods: list[str] = []
         fields: list[str] = []
+        field_types: dict[str, str] = {}
         kind = {
             "interface_declaration": "interface",
             "enum_declaration": "enum",
@@ -175,7 +176,9 @@ class TreeSitterSourceParser:
                         methods.append(method_name)
                 elif child.type in {"field_declaration", "constant_declaration"}:
                     fields.extend(self._collect_variable_names(document, child))
+                    field_types.update(self._java_field_types(document, child))
 
+        bases, interfaces = self._java_bases_interfaces(document, node)
         start_line, end_line = document.line_range(node)
         return ParsedClass(
             name=self._node_name(document, node) or "<anonymous>",
@@ -185,7 +188,57 @@ class TreeSitterSourceParser:
             kind=kind,
             methods=methods,
             fields=fields,
+            field_types=field_types,
+            bases=bases,
+            interfaces=interfaces,
         )
+
+    @staticmethod
+    def _java_field_types(
+        document: TreeSitterDocument, field_decl: Node,
+    ) -> dict[str, str]:
+        """Map each declared field name to its declared type name.
+
+        ``private final AccountDao accountDao;`` -> ``{"accountDao": "AccountDao"}``.
+        Generic types keep only their raw head (``List<Foo>`` -> ``List``).
+        """
+        type_node = field_decl.child_by_field_name("type")
+        if type_node is None:
+            return {}
+        type_names = TreeSitterSourceParser._collect_type_names(document, type_node)
+        if not type_names:
+            return {}
+        # The declared type is the first (usually only) collected head token.
+        type_name = type_names[0]
+
+        out: dict[str, str] = {}
+        for child in field_decl.named_children:
+            if child.type == "variable_declarator":
+                name_node = child.child_by_field_name("name")
+                if name_node is not None:
+                    out[document.text_for(name_node).strip()] = type_name
+        return out
+
+    @staticmethod
+    def _java_bases_interfaces(
+        document: TreeSitterDocument, node: Node,
+    ) -> tuple[list[str], list[str]]:
+        """Extract Java `extends` (bases) and `implements` (interfaces)."""
+        bases: list[str] = []
+        interfaces: list[str] = []
+
+        superclass = node.child_by_field_name("superclass")
+        if superclass is not None:
+            bases.extend(TreeSitterSourceParser._collect_type_names(document, superclass))
+
+        # class ... implements I, J  -> field "interfaces" (super_interfaces)
+        # interface ... extends A, B -> field "interfaces" as well in tree-sitter-java
+        for field_name in ("interfaces",):
+            iface_node = node.child_by_field_name(field_name)
+            if iface_node is not None:
+                interfaces.extend(TreeSitterSourceParser._collect_type_names(document, iface_node))
+
+        return bases, interfaces
 
     def _build_javascript_class(
         self,
@@ -208,6 +261,7 @@ class TreeSitterSourceParser:
                     if field_name:
                         fields.append(field_name)
 
+        bases, interfaces = self._js_bases_interfaces(document, node)
         start_line, end_line = document.line_range(node)
         return ParsedClass(
             name=self._node_name(document, node) or "<anonymous>",
@@ -217,7 +271,57 @@ class TreeSitterSourceParser:
             kind=kind,
             methods=methods,
             fields=fields,
+            bases=bases,
+            interfaces=interfaces,
         )
+
+    @staticmethod
+    def _js_bases_interfaces(
+        document: TreeSitterDocument, node: Node,
+    ) -> tuple[list[str], list[str]]:
+        """Extract JS/TS `extends` (bases) and TS `implements` (interfaces)."""
+        bases: list[str] = []
+        interfaces: list[str] = []
+
+        for child in node.named_children:
+            if child.type == "class_heritage":
+                for h in child.named_children:
+                    if h.type == "extends_clause":
+                        bases.extend(TreeSitterSourceParser._collect_type_names(document, h))
+                    elif h.type == "implements_clause":
+                        interfaces.extend(TreeSitterSourceParser._collect_type_names(document, h))
+                    else:
+                        # Plain JS: class_heritage directly wraps the extends expr.
+                        bases.extend(TreeSitterSourceParser._collect_type_names(document, h))
+            # TS `interface X extends A, B` uses extends_type_clause directly.
+            elif child.type == "extends_type_clause":
+                interfaces.extend(TreeSitterSourceParser._collect_type_names(document, child))
+
+        return bases, interfaces
+
+    @staticmethod
+    def _collect_type_names(document: TreeSitterDocument, node: Node) -> list[str]:
+        """Collect identifier/type name tokens under a heritage node."""
+        names: list[str] = []
+
+        def walk(n: Node) -> None:
+            if n.type in {
+                "identifier",
+                "type_identifier",
+                "scoped_type_identifier",
+                "generic_type",
+            }:
+                text = document.text_for(n).strip()
+                # generic_type wraps a type_identifier; take the raw head token.
+                head = text.split("<", 1)[0].strip()
+                if head and head not in names:
+                    names.append(head)
+                return
+            for c in n.named_children:
+                walk(c)
+
+        walk(node)
+        return names
 
     # ════════════════════════════════════════════════════════════════════
     # Go tree-sitter parsing
@@ -248,16 +352,24 @@ class TreeSitterSourceParser:
                     )
                     methods_list: list[str] = []
                     fields_list: list[str] = []
-                    # Extract struct fields
+                    bases_list: list[str] = []
+                    # Extract struct fields (embedded fields become bases)
                     if type_node.type == "struct_type":
                         field_list = self._find_first_child(type_node, "field_declaration_list")
                         if field_list is not None:
                             for field_decl in field_list.named_children:
-                                if field_decl.type == "field_declaration":
-                                    fname = self._node_name(document, field_decl)
-                                    if fname:
-                                        fields_list.append(fname)
-                    # Extract interface methods
+                                if field_decl.type != "field_declaration":
+                                    continue
+                                # Embedded field: no `name`, the type IS the base.
+                                if field_decl.child_by_field_name("name") is None:
+                                    base = self._go_type_head(document, field_decl)
+                                    if base and base not in bases_list:
+                                        bases_list.append(base)
+                                    continue
+                                fname = self._node_name(document, field_decl)
+                                if fname:
+                                    fields_list.append(fname)
+                    # Extract interface methods (embedded interfaces become bases)
                     elif type_node.type == "interface_type":
                         method_spec_list = type_node.named_children
                         for ms in method_spec_list:
@@ -265,6 +377,12 @@ class TreeSitterSourceParser:
                                 mname = self._node_name(document, ms)
                                 if mname:
                                     methods_list.append(mname)
+                            # Embedded interface: bare type. Grammar versions wrap
+                            # it in `type_elem`; older ones expose it directly.
+                            elif ms.type in {"type_elem", "type_identifier", "qualified_type"}:
+                                base = self._go_embedded_type_name(document, ms)
+                                if base and base not in bases_list:
+                                    bases_list.append(base)
 
                     start_line, end_line = document.line_range(spec)
                     classes.append(ParsedClass(
@@ -275,6 +393,7 @@ class TreeSitterSourceParser:
                         kind=kind,
                         methods=methods_list,
                         fields=fields_list,
+                        bases=bases_list,
                     ))
 
             # function declarations: func foo(...) { ... }
@@ -324,6 +443,25 @@ class TreeSitterSourceParser:
             param_count=param_count,
             loc=loc,
         )
+
+    @staticmethod
+    def _go_embedded_type_name(document: TreeSitterDocument, node: Node) -> str | None:
+        """Name of an embedded interface element (unwraps `type_elem`)."""
+        target = node
+        if node.type == "type_elem":
+            target = node.named_children[0] if node.named_children else node
+        text = document.text_for(target).strip().lstrip("*")
+        return text.rsplit(".", 1)[-1] or None
+
+    @staticmethod
+    def _go_type_head(document: TreeSitterDocument, field_decl: Node) -> str | None:
+        """Base type name of an embedded Go field (strips `*` and pkg qualifier)."""
+        type_node = field_decl.child_by_field_name("type")
+        if type_node is None:
+            return None
+        text = document.text_for(type_node).strip().lstrip("*")
+        # qualified embed pkg.Type -> take the type component.
+        return text.rsplit(".", 1)[-1] or None
 
     @staticmethod
     def _go_method_receiver(document: TreeSitterDocument, node: Node) -> str | None:
@@ -408,6 +546,7 @@ class TreeSitterSourceParser:
                                     if fname:
                                         fields_list.append(fname)
 
+                bases_list = self._cpp_base_classes(document, node)
                 start_line, end_line = document.line_range(node)
                 classes.append(ParsedClass(
                     name=class_name,
@@ -417,6 +556,7 @@ class TreeSitterSourceParser:
                     kind=kind,
                     methods=methods_list,
                     fields=fields_list,
+                    bases=bases_list,
                 ))
                 return
 
@@ -433,6 +573,22 @@ class TreeSitterSourceParser:
 
         visit(document.root_node, [])
         return classes, functions
+
+    @staticmethod
+    def _cpp_base_classes(document: TreeSitterDocument, node: Node) -> list[str]:
+        """Extract C++ base class names from a class/struct `base_class_clause`."""
+        clause = TreeSitterSourceParser._find_first_child(node, "base_class_clause")
+        if clause is None:
+            return []
+        bases: list[str] = []
+        for child in clause.named_children:
+            if child.type in {"type_identifier", "qualified_identifier", "template_type"}:
+                text = document.text_for(child).strip()
+                # template_type wraps a name<...>; strip qualifier + template args.
+                head = text.split("<", 1)[0].strip().rsplit("::", 1)[-1]
+                if head and head not in bases:
+                    bases.append(head)
+        return bases
 
     def _build_cpp_function(
         self,

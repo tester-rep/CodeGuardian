@@ -267,13 +267,23 @@ codeguardian scan . --depth deep       # ~2-5分钟 (含AI调用)
 ### PCI 工作原理
 
 ```
-1. 解析所有文件        -> 提取结构 (tree-sitter AST)
-2. 构建符号表          -> 所有函数/方法/类，O(1) 查找
+1. 解析所有文件        -> 提取结构 (tree-sitter AST)，含类的 extends/implements
+2. 构建符号表          -> 所有函数/方法/类 + 继承层级，O(1) 查找
 3. 解析导入            -> 语言特定的导入解析器
 4. 提取调用点          -> 从所有函数体中提取
-5. 解析目标            -> 构建带置信度权重边的调用图
+5. 解析目标            -> 构建带置信度权重边的调用图（利用继承层级解析父类/接口的虚方法调用）
 6. 计算摘要            -> 每个函数的 null/throw/resource/taint 行为
 7. 传播                -> 沿调用边定点传播 (最多3轮)
+```
+
+> 继承信息（`extends`/`implements`）由解析器抽取并登记到符号表，使 `self.method()` / `this.method()` 等能解析到父类中定义的方法（虚调用解析）。当前抽取覆盖 Python / Java / JavaScript / TypeScript / Go / C++。其中 Go 无 `extends` 概念，结构体与接口的**嵌入类型**（embedding）被视为基类；C++ 支持多重继承，`base_class_clause` 中的所有基类均登记为基类。
+
+### 调试导出调用图
+
+设置环境变量 `CODEGUARDIAN_PCI_DUMP=<路径>` 后扫描，会将调用图导出为 JSON（节点、`call_edges`、`type_edges`（inherits/implements）），用于排查跨函数解析问题。默认关闭，不影响扫描性能。
+
+```bash
+CODEGUARDIAN_PCI_DUMP=graph.json codeguardian scan ./src
 ```
 
 ### 检测规则
@@ -464,6 +474,17 @@ rules:
 codeguardian baseline .    # 记录当前发现为基线
 codeguardian scan .        # 之后只报告新增发现
 ```
+
+### 静态误报抑制
+
+在基线与 AI 验证之前，扫描器内置四层确定性的误报削减（无需配置）：
+
+- **占位符 / 环境变量凭据过滤** — `HARDCODED-PASSWORD` 只报告真实凭据。`changeme`、`your_password_here`、`xxx` 等占位符值，以及 `$VAR` / `${VAR}` / `%VAR%` 环境变量引用不命中（跨 Python / Java / JavaScript / Go / C++ 及正则回退路径统一生效）。
+- **低熵凭据过滤** — `HARDCODED-PASSWORD` 进一步排除低熵值：常见弱口令 / 默认词（`admin`、`localhost`、`123456` 等），以及短单一字符类串（纯数字、纯小写字母且 <8 位）—— 这些几乎不可能是真实凭据，高熵值仍报。
+- **测试路径豁免** — 测试文件（`tests/`、`test/`、`spec/`、`__tests__/` 目录，及 `test_*`、`*_test.go`、`*.spec.ts` 等命名）不属于部署攻击面：其中的安全规则（硬编码密钥、注入类等）与性能启发式规则（`SQL-IN-LOOP`、`MISSING-PAGINATION`、`SELECT-STAR-NO-LIMIT`）自动抑制，避免测试夹具 / mock 淹没报告。
+- **场景感知豁免（Python）** — `WEAK-HASH` 与 `INSECURE-RANDOM` 依据所在函数名判断用途：处于明确非安全场景（`checksum`/`cache`/`etag`/`sample`/`shuffle`/`jitter`/`backoff` 等）时不报；处于安全场景（`password`/`token`/`secret`/`verify` 等）或无法判定时仍报（保守）。Python 这两个规则统一走 AST 路径，避免无上下文的正则重复命中。
+
+以上削减的净效果由 `benchmark/fp_corpus`（合成误报语料 + 标注）持续度量，跑 `pytest tests/test_fp_benchmark.py` 输出精确率 / 召回。
 
 ---
 

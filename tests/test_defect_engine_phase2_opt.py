@@ -11,7 +11,7 @@ Tests verify:
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from codeguardian.config.loader import load_app_config
+from codeguardian.config.defaults import default_config
 from codeguardian.core.context import ScanContext
 from codeguardian.engines.defect_engine import DefectEngine
 
@@ -247,6 +247,6 @@ async def _scan_in_dir(rel_path: str, source: str):
         full_path = root / rel_path
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
     return result.findings

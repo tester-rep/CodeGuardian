@@ -66,6 +66,8 @@ class PythonSourceParser:
             elif isinstance(child, ast.AnnAssign):
                 fields.extend(self._extract_assignment_names(child.target))
 
+        bases = [name for name in (self._base_name(b) for b in node.bases) if name]
+
         class_entity = ParsedClass(
             name=node.name,
             file_path=rel_path,
@@ -74,8 +76,20 @@ class PythonSourceParser:
             kind="class",
             methods=methods,
             fields=fields,
+            bases=bases,
         )
         return class_entity, function_entities
+
+    @staticmethod
+    def _base_name(expr: ast.expr) -> str | None:
+        """Best-effort base class name from a ClassDef base expression."""
+        if isinstance(expr, ast.Name):
+            return expr.id
+        if isinstance(expr, ast.Attribute):
+            return expr.attr
+        if isinstance(expr, ast.Subscript):  # Generic[T], Protocol[...] etc.
+            return PythonSourceParser._base_name(expr.value)
+        return None
 
     def _build_function(
         self,

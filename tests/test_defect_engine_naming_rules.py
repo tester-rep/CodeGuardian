@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from codeguardian.config.loader import load_app_config
+from codeguardian.config.defaults import default_config
 from codeguardian.core.context import ScanContext
 from codeguardian.engines.defect_engine import DefectEngine
 
@@ -22,7 +22,7 @@ async def _run(source: str) -> list:
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         (root / "sample.py").write_text(source.strip() + "\n", encoding="utf-8")
-        ctx = ScanContext(project_root=str(root), config=load_app_config(None))
+        ctx = ScanContext(project_root=str(root), config=default_config())
         result = await DefectEngine().analyze(ctx)
         return result.findings
 
