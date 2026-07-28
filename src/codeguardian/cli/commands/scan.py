@@ -277,22 +277,22 @@ def _run_scan(
 
     # Display AI configuration status
     if app_config.ai.enabled:
-        console.print(f"  [green]✓[/green] AI 已启用 (provider={app_config.ai.provider}, model={app_config.ai.model})")
+        console.print(f"  [green][OK][/green] AI 已启用 (provider={app_config.ai.provider}, model={app_config.ai.model})")
         if app_config.ai_verify.enabled:
             v_model = app_config.ai_verify.verify_model or app_config.ai.summary_model or app_config.ai.model
             drop_label = "丢弃 FP" if (drop_false_positives or app_config.ai_verify.drop_false_positives) else "降级保留 FP"
-            console.print(f"  [green]✓[/green] AI Verifier 已启用 (model={v_model}, 策略={drop_label})")
+            console.print(f"  [green][OK][/green] AI Verifier 已启用 (model={v_model}, 策略={drop_label})")
         if resolved_depth == "deep" and app_config.deep_review.enabled:
             dr_model = app_config.deep_review.review_model or app_config.ai.model
             rm = app_config.deep_review.review_mode
             mode_label = "Ultra (多维探索+验证)" if rm == "ultra" else "Standard (单 pass)"
-            console.print(f"  [green]✓[/green] AI Deep Review 已启用 (model={dr_model}, mode={mode_label})")
+            console.print(f"  [green][OK][/green] AI Deep Review 已启用 (model={dr_model}, mode={mode_label})")
             if no_cache:
-                console.print("  [yellow]⚠ Deep Review 缓存已禁用 (--no-cache)[/yellow] — 所有 chunk 将重新调用 AI")
+                console.print("  [yellow][!][/yellow] Deep Review 缓存已禁用 (--no-cache) — 所有 chunk 将重新调用 AI")
         elif resolved_depth != "deep":
-            console.print(f"  [dim]ℹ Deep Review 仅在 --depth deep 时启用 (当前: {resolved_depth})[/dim]")
+            console.print(f"  [dim](i) Deep Review 仅在 --depth deep 时启用 (当前: {resolved_depth})[/dim]")
     else:
-        console.print("  [yellow]⚠ AI 未启用[/yellow] — 设置 [ai] enabled = true 以开启 AI 检测")
+        console.print("  [yellow][!][/yellow] AI 未启用 — 设置 [ai] enabled = true 以开启 AI 检测")
 
     orchestrator = Orchestrator(app_config)
     result = asyncio.run(orchestrator.run_scan(request))

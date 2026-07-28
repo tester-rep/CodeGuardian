@@ -64,9 +64,9 @@ def create_provider_for_model(config: AIConfig, model_override: str) -> AIProvid
 
 def _create_openai_compatible(config: AIConfig) -> AIProvider:
     """Instantiate the OpenAI-compatible provider, falling back to dummy on error."""
-    from codeguardian.ai.providers.venus_provider import VenusProvider
-
     try:
+        from codeguardian.ai.providers.venus_provider import VenusProvider
+
         return VenusProvider(
             model=config.model,
             api_key_env=config.api_key_env,
@@ -76,8 +76,8 @@ def _create_openai_compatible(config: AIConfig) -> AIProvider:
             timeout=config.timeout,
             requests_per_second=config.requests_per_second,
         )
-    except ValueError as exc:
+    except (ValueError, ImportError) as exc:
         logger.warning(
-            "AI provider configuration error: %s. Falling back to DummyAIProvider.", exc
+            "AI provider unavailable: %s. Falling back to DummyAIProvider.", exc
         )
         return DummyAIProvider()

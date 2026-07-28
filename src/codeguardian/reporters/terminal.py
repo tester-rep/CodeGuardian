@@ -363,7 +363,7 @@ class TerminalReporter:
     def _render_token_usage(self, usage: dict) -> None:
         """Render AI token usage statistics as a Rich table."""
         self.console.print()
-        token_table = Table(title="🔢 AI Token 消耗明细")
+        token_table = Table(title="AI Token 消耗明细")
         token_table.add_column("阶段", style="bold")
         token_table.add_column("使用模型", style="cyan")
         token_table.add_column("提示词 Tokens", justify="right")
