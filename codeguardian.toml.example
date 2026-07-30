@@ -1,5 +1,11 @@
 [scan]
-depth = "standard"
+# Single AI switch (SSOT). Derives ai.enabled and deep_review.review_mode.
+#   ai_off   = disable AI entirely (static engines still run in full)
+#   standard = AI enabled, single-pass deep review (default)
+#   ultra    = AI enabled, multi-explorer + critic deep review
+# Coverage (full vs incremental) is controlled by the --incremental/--since CLI flags,
+# NOT by this setting. The engine set is always the full standard set.
+review_mode = "standard"
 # languages = ["cpp", "java", "go", "lua", "python", "csharp", "javascript", "typescript", "rust"]
 # exclude_paths = ["libs/third_party", "generated"]
 
@@ -7,9 +13,9 @@ depth = "standard"
 formats = ["terminal", "json"]
 
 [ai]
-# AI features require an OpenAI-compatible API endpoint.
-# Set enabled = true and provide CODEGUARDIAN_API_KEY in your environment.
-enabled = false
+# AI features require an OpenAI-compatible API endpoint. Enable AI via
+# scan.review_mode (standard/ultra) above and provide CODEGUARDIAN_API_KEY.
+# (Legacy `enabled` is derived from scan.review_mode and no longer set here.)
 provider = "openai"                          # openai / dummy
 model = "gpt-4o"                             # Any model supported by your endpoint
 # summary_model = ""                        # Lightweight model for summaries; empty = reuse model
@@ -22,7 +28,7 @@ api_key_env = "CODEGUARDIAN_API_KEY"         # Environment variable name for API
 # requests_per_second = 0.0                 # Client-side TPS throttle; 0 = unlimited
 
 [ai.deep_review]
-# enabled = true
+# review_mode is derived from scan.review_mode (standard/ultra); do not set here.
 # max_tokens_per_scan = 500000
 # max_concurrent = 5
 # confidence_threshold = 6

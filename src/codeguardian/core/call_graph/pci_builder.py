@@ -176,7 +176,12 @@ class PCIBuilder:
         from codeguardian.parsers.factory import get_parser
 
         suffixes = set(EXTENSION_LANGUAGE_MAP.keys())
-        candidate_files = ctx.collect_candidate_files(project_root, suffixes=suffixes)
+        # Always parse the FULL project (ignore_incremental_scope=True) so the
+        # call graph is complete even in incremental mode; cross-function analysis
+        # on a truncated graph would miss callers/callees outside the diff.
+        candidate_files = ctx.collect_candidate_files(
+            project_root, suffixes=suffixes, ignore_incremental_scope=True,
+        )
 
         # Limit file count
         if len(candidate_files) > self.max_files:

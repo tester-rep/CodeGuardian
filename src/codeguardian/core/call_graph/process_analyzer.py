@@ -272,7 +272,7 @@ class ProcessAnalyzer:
         throwing_between = False
         for qname in process.all_functions:
             s = summaries.get(qname)
-            if s and s.may_throw and qname not in write_funcs:
+            if s and (s.may_throw or s.transitive_may_throw) and qname not in write_funcs:
                 throwing_between = True
                 break
 

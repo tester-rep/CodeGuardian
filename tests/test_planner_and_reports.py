@@ -10,7 +10,7 @@ import pytest
 from codeguardian.config.defaults import default_config
 from codeguardian.core.context import ScanContext
 from codeguardian.core.orchestrator import Orchestrator
-from codeguardian.core.planner import DEEP_ENABLED_ENGINES, VALID_DIMENSIONS, build_plan
+from codeguardian.core.planner import STANDARD_ENABLED_ENGINES, VALID_DIMENSIONS, build_plan
 from codeguardian.models.metric import MetricNames
 from codeguardian.models.scan import ScanRequest
 
@@ -31,16 +31,15 @@ def test_build_plan_filters_enabled_engines_by_dimension() -> None:
     assert plan.enabled_engines == ["security"]
 
 
-def test_build_plan_deep_mode_only_uses_registered_engines() -> None:
+def test_build_plan_uses_full_standard_engine_set() -> None:
     ctx = ScanContext(
         project_root=".",
         config=default_config(),
-        depth="deep",
     )
 
     plan = build_plan(ctx)
 
-    assert plan.enabled_engines == DEEP_ENABLED_ENGINES
+    assert plan.enabled_engines == STANDARD_ENABLED_ENGINES
 
 
 def test_build_plan_rejects_unsupported_dimensions() -> None:
@@ -89,7 +88,6 @@ def test_build_plan_supports_architecture_dimension() -> None:
         project_root=".",
         config=default_config(),
         dimensions=["architecture"],
-        depth="deep",
     )
 
     plan = build_plan(ctx)
@@ -125,13 +123,12 @@ def test_build_plan_supports_all_keyword() -> None:
         project_root=".",
         config=default_config(),
         dimensions=["all"],
-        depth="deep",
     )
 
     plan = build_plan(ctx)
 
     assert plan.enabled_dimensions == VALID_DIMENSIONS
-    assert plan.enabled_engines == DEEP_ENABLED_ENGINES
+    assert plan.enabled_engines == STANDARD_ENABLED_ENGINES
 
 
 def test_build_plan_uses_incremental_target_files() -> None:
@@ -160,7 +157,6 @@ def test_deep_review_file_map_falls_back_without_structure_results() -> None:
         ctx = ScanContext(
             project_root=str(root),
             config=default_config(),
-            depth="deep",
             dimensions=["defects"],
             languages=["typescript"],
         )
@@ -186,7 +182,7 @@ async def test_orchestrator_respects_configured_report_output_dir() -> None:
             ScanRequest(
                 project_path=root,
                 report_formats=["json"],
-                depth="quick",
+                review_mode="ai_off",
             )
         )
 
@@ -214,7 +210,7 @@ async def test_orchestrator_only_renders_requested_reports(monkeypatch: pytest.M
             ScanRequest(
                 project_path=root,
                 report_formats=["json"],
-                depth="quick",
+                review_mode="ai_off",
             )
         )
 
@@ -231,7 +227,7 @@ async def test_orchestrator_uses_configured_risk_weights() -> None:
             ScanRequest(
                 project_path=root,
                 report_formats=["json"],
-                depth="quick",
+                review_mode="ai_off",
             )
         )
 
@@ -242,7 +238,7 @@ async def test_orchestrator_uses_configured_risk_weights() -> None:
             ScanRequest(
                 project_path=root,
                 report_formats=["json"],
-                depth="quick",
+                review_mode="ai_off",
             )
         )
 
@@ -258,7 +254,7 @@ async def test_orchestrator_populates_ai_summary_and_release_conclusion() -> Non
             ScanRequest(
                 project_path=root,
                 report_formats=["json"],
-                depth="quick",
+                review_mode="ai_off",
             )
         )
 
@@ -298,7 +294,7 @@ async def test_orchestrator_uses_ai_router_when_enabled(monkeypatch: pytest.Monk
             ScanRequest(
                 project_path=root,
                 report_formats=[],
-                depth="quick",
+                review_mode="ai_off",
             )
         )
 
@@ -319,7 +315,7 @@ async def test_orchestrator_emits_project_risk_metrics_for_core_modules() -> Non
             ScanRequest(
                 project_path=root,
                 report_formats=[],
-                depth="quick",
+                review_mode="ai_off",
             )
         )
 
@@ -344,7 +340,7 @@ async def test_orchestrator_populates_module_dimension_scores() -> None:
             ScanRequest(
                 project_path=root,
                 report_formats=[],
-                depth="quick",
+                review_mode="ai_off",
             )
         )
 
@@ -384,7 +380,7 @@ async def test_orchestrator_populates_module_special_report_fields() -> None:
             ScanRequest(
                 project_path=root,
                 report_formats=[],
-                depth="quick",
+                review_mode="ai_off",
             )
         )
 

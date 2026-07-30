@@ -132,7 +132,7 @@ class Orchestrator:
             test_frameworks=detection.test_frameworks,
             is_git_repo=detection.is_git_repo,
             repo_type=detection.repo_type,
-            depth=request.depth,
+            review_mode=request.review_mode,
             dimensions=request.dimensions,
             languages=request.languages or self.config.scan.languages,
             incremental=request.incremental or request.since is not None,
@@ -143,9 +143,25 @@ class Orchestrator:
 
         plan = build_plan(ctx)
 
-        # Build Project Call Graph Index (PCI) for cross-function analysis
-        # Only for standard/deep modes — too expensive for quick scans
-        if ctx.depth in ("standard", "deep"):
+        # Runtime AI degrade: if AI is requested but the provider resolves to the
+        # dummy placeholder (missing key / import error / provider=dummy), force
+        # ai_off explicitly and surface it — never silently pretend AI ran.
+        runtime_ai_mode = ctx.review_mode
+        if ctx.ai_enabled and isinstance(AIRouter.from_config(self.config.ai).provider, DummyAIProvider):
+            runtime_ai_mode = "degraded(ai_off)"
+            ctx.review_mode = "ai_off"
+            self.config.ai.enabled = False
+            from codeguardian.cli.output import console
+
+            console.print(
+                "[red][!] AI 不可达（缺少 API Key 或 provider=dummy），"
+                "已降级为 ai_off，本次不执行 AI 深审/校验[/red]"
+            )
+
+        # Build Project Call Graph Index (PCI) for cross-function analysis.
+        # PCI always uses the FULL project graph (even in incremental mode) so
+        # cross-function analysis never runs on a truncated call graph.
+        if "cross_function" in plan.enabled_engines:
             self._build_pci(ctx, no_cache=request.no_cache)
 
         active_engines = [ENGINE_MAP[name] for name in plan.enabled_engines if name in ENGINE_MAP]
@@ -181,7 +197,13 @@ class Orchestrator:
                 result.engine_name = engine_name
             engine_warnings.extend(f"{engine_name}: {warning}" for warning in result.warnings)
             engine_errors.extend(f"{engine_name}: {error}" for error in result.errors)
-            findings.extend(result.findings)
+            engine_findings = result.findings
+            # cross_function runs on the FULL call graph (see PCI note above); in
+            # incremental mode narrow its findings back to changed files so the
+            # report only surfaces issues relevant to the diff.
+            if ctx.incremental and "cross_function" in engine_name:
+                engine_findings = self._filter_findings_to_changed(engine_findings, ctx.changed_files)
+            findings.extend(engine_findings)
             metrics.extend(result.metrics)
             files.extend(result.files)
             functions.extend(result.functions)
@@ -222,7 +244,7 @@ class Orchestrator:
         # AI Deep Review phase (only in deep mode with AI enabled)
         # Allow free_review (scout) to run independently of deep_review
         deep_review_output: MergeOutput | None = None
-        if ctx.is_deep and self.config.ai.enabled and (self.config.deep_review.enabled or self.config.free_review.enabled):
+        if self.config.ai.enabled:
             deep_review_output = await self._run_deep_review(ctx, findings, files)
             if deep_review_output:
                 findings.extend(deep_review_output.primary)
@@ -341,8 +363,8 @@ class Orchestrator:
             finished_at=finished_at.isoformat(),
             duration_seconds=round(elapsed, 2),
             project_path=str(request.project_path),
-            execution_mode="incremental" if ctx.incremental else request.depth,
-            depth=request.depth,
+            coverage="incremental" if ctx.incremental else "full",
+            ai_mode=runtime_ai_mode,
             project_profile=project_profile,
             findings=findings,
             supplementary_findings=supplementary_findings,
@@ -364,6 +386,19 @@ class Orchestrator:
 
     def _build_plan(self, ctx: ScanContext) -> AnalysisPlan:
         return build_plan(ctx)
+
+    @staticmethod
+    def _filter_findings_to_changed(findings: list[Finding], changed_files: list[str] | None) -> list[Finding]:
+        """Keep only project-level findings and those located in changed files."""
+        if not changed_files:
+            return list(findings)
+        changed = {path.replace("\\", "/") for path in changed_files}
+        return [
+            finding
+            for finding in findings
+            if finding.location.file_path in {"project", ""}
+            or finding.location.file_path.replace("\\", "/") in changed
+        ]
 
     def _build_pci(self, ctx: ScanContext, *, no_cache: bool = False) -> None:
         """Build Project Call Graph Index for cross-function analysis.

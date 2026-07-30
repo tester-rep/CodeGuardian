@@ -79,7 +79,7 @@ def trend_command(
         table.add_row(
             _format_snapshot_time(snapshot),
             snapshot.scan_id or "-",
-            snapshot.execution_mode or snapshot.depth or "-",
+            f"{snapshot.coverage}/{snapshot.ai_mode}",
             f"{snapshot.project_profile.overall_score:.1f}",
             str(len(snapshot.findings)),
             str(_count_critical(snapshot)),

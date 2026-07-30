@@ -14,14 +14,16 @@ def init_command() -> None:
 
     target.write_text(
         """[scan]
-depth = "standard"
+# Single AI switch (SSOT): ai_off | standard | ultra.
+# Coverage (full vs incremental) is controlled by --incremental/--since, not here.
+review_mode = "ai_off"
 # languages = ["cpp", "java", "go", "lua", "python", "csharp", "javascript", "typescript", "rust"]
 
 [reports]
 formats = ["terminal", "json"]
 
 [ai]
-enabled = false
+# ai.enabled is derived from scan.review_mode (standard/ultra enable AI).
 provider = "openai"
 model = "gpt-4o"
 api_key_env = "CODEGUARDIAN_API_KEY"

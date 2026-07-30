@@ -129,7 +129,50 @@ def _merge_toml_into_config(data: dict[str, Any]) -> AppConfig:
     if "semgrep" in data:
         raw["semgrep"] = data["semgrep"]
 
+    _apply_deprecations(raw)
+
     return AppConfig.model_validate(raw) if raw else default_config()
+
+
+def _apply_deprecations(raw: dict[str, Any]) -> None:
+    """Map removed config keys onto ``scan.review_mode`` (SSOT), in place.
+
+    Removed keys: ``scan.depth``, ``ai.enabled``, ``deep_review.enabled``,
+    ``deep_review.review_mode``. When the user has not set ``scan.review_mode``
+    explicitly, derive it from the legacy AI switches so old configs keep working.
+    """
+    scan = raw.setdefault("scan", {}) if isinstance(raw.get("scan", {}), dict) else {}
+    raw["scan"] = scan
+    ai = raw.get("ai", {}) if isinstance(raw.get("ai", {}), dict) else {}
+    deep = raw.get("deep_review", {}) if isinstance(raw.get("deep_review", {}), dict) else {}
+
+    if "depth" in scan:
+        old_depth = str(scan.pop("depth", "")).strip().lower()
+        logger.warning(
+            "[deprecated] scan.depth 已废弃并忽略；引擎恒为全量，"
+            "覆盖度用 --incremental/--since 控制，AI 用 scan.review_mode 控制。"
+        )
+        if old_depth == "quick":
+            logger.warning("[deprecated] depth=quick 已移除；快速预检请改用 --incremental。")
+
+    if "review_mode" not in scan:
+        ai_on = ai.get("enabled")  # None if unset
+        legacy_dr_mode = str(deep.get("review_mode", "standard")).strip().lower()
+        if ai_on is False:
+            scan["review_mode"] = "ai_off"
+        elif ai_on is True:
+            scan["review_mode"] = "ultra" if legacy_dr_mode == "ultra" else "standard"
+        if ai_on is not None:
+            logger.warning(
+                "[deprecated] ai.enabled/deep_review.* 已合并为 scan.review_mode=%s",
+                scan.get("review_mode"),
+            )
+
+    # Drop removed legacy fields so they don't linger (they'd be ignored anyway).
+    ai.pop("enabled", None)
+    deep.pop("enabled", None)
+    if "review_mode" in scan:
+        deep.pop("review_mode", None)
 
 
 

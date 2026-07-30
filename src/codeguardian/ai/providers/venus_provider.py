@@ -67,6 +67,19 @@ class _AsyncTokenBucket:
             await asyncio.sleep(wait)
 
 
+class _RateLimitError(Exception):
+    """Rate limit error carrying the server's Retry-After value.
+
+    Attached as ``__cause__`` on the original httpx exception so upstream
+    retry logic can extract the server-provided wait time instead of
+    guessing.
+    """
+
+    def __init__(self, wait_seconds: int) -> None:
+        self.wait_seconds = wait_seconds
+        super().__init__(f"Rate limited, retry after {wait_seconds}s")
+
+
 # Module-level limiter registry, keyed by base_url. All LLMProvider
 # instances pointing at the same gateway share a single bucket, so a
 # multi-phase scan (deep_review + ai_verify + free_review) collectively
@@ -226,11 +239,16 @@ class VenusProvider:
             # and applies its own backoff + concurrency reduction.
             status = e.response.status_code
             if status == 429:
-                retry_after = e.response.headers.get("Retry-After", "n/a")
+                retry_after_raw = e.response.headers.get("Retry-After", "")
+                try:
+                    wait_s = int(retry_after_raw)
+                except (ValueError, TypeError):
+                    wait_s = 5
                 logger.warning(
-                    "LLM rate-limited (429), retry-after=%s — upstream will back off",
-                    retry_after,
+                    "LLM rate-limited (429), retry-after=%ss — upstream will back off",
+                    wait_s,
                 )
+                e.__cause__ = _RateLimitError(wait_s)
             else:
                 # 4xx/5xx other than 429 → keep as warning with body snippet,
                 # no stack trace (auth errors already logged above).

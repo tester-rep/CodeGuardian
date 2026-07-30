@@ -40,7 +40,7 @@ CodeGuardian 是一款**静态代码分析 CLI 工具**，超越传统单文件 
 - [核心特性](#核心特性)
 - [架构](#架构)
 - [使用方式](#使用方式)
-- [扫描深度模式](#扫描深度模式)
+- [审查模式与覆盖度](#审查模式与覆盖度)
 - [支持语言](#支持语言)
 - [分析引擎](#分析引擎)
 - [跨函数检测](#跨函数检测)
@@ -162,17 +162,20 @@ codeguardian scan /path/to/project
 ### 进阶选项
 
 ```bash
-# 深度扫描 + AI审查 + 多格式输出
-codeguardian scan . --depth deep --report terminal,json,html
+# 全量扫描 + AI审查 + 多格式输出
+codeguardian scan . --review-mode standard --report terminal,json,html
 
-# 快速扫描（引擎子集，无PCI）
-codeguardian scan . --depth quick
+# 增量扫描（仅变更文件；调用图仍构建全量，保证跨函数分析完整）
+codeguardian scan . --incremental --since HEAD~1
 
 # Ultra 审查模式（3探索者 + 1验证者）
-codeguardian scan . --depth deep --review-mode ultra
+codeguardian scan . --review-mode ultra
+
+# 完全禁用 AI（静态引擎仍全量运行）
+codeguardian scan . --review-mode ai_off
 
 # 丢弃AI确认的误报
-codeguardian scan . --depth deep --drop-false-positives
+codeguardian scan . --review-mode standard --drop-false-positives
 
 # 跳过缓存，全量重新分析
 codeguardian scan . --no-cache
@@ -209,18 +212,29 @@ codeguardian trend .                         # 查看趋势
 
 ---
 
-## 扫描深度模式
+## 审查模式与覆盖度
 
-| 模式 | 引擎数 | PCI | AI审查 | 并发 | 适用场景 |
-|------|--------|-----|--------|------|----------|
-| `quick` | 5 | 否 | 否 | 2 | Pre-commit hook，快速反馈 |
-| `standard` | 全部12个 | 是 | 否 | 4 | CI 管线日常扫描 |
-| `deep` | 全部12个 | 是(含传播) | 是 | 6 | 发版候选审查 |
+用两个正交维度取代旧的单一 `--depth`：
+
+**AI 审查模式**（`--review-mode` 或 `scan.review_mode`）——唯一的 AI 开关：
+
+| 模式 | 静态引擎 | PCI | AI 深度审查 | 适用场景 |
+|------|----------|-----|-------------|----------|
+| `ai_off` | 全部11个 | 是 | 否 | 快速、离线、无 API Key |
+| `standard` | 全部11个 | 是 | 单-pass | CI 管线日常扫描（默认） |
+| `ultra` | 全部11个 | 是 | 多探索者 + 验证者 | 发版候选审查 |
+
+**覆盖度**（`--incremental` / `--since`）——与审查模式独立：
+
+| 参数 | 分析文件 | 说明 |
+|------|----------|------|
+| _（无）_ | 全量项目 | 默认 |
+| `--incremental [--since REV]` | 仅变更文件 | 调用图(PCI)仍按**全量**项目构建以保证跨函数分析完整；跨函数发现随后收敛到变更文件 |
 
 ```bash
-codeguardian scan . --depth quick      # 中等项目 ~5秒
-codeguardian scan . --depth standard   # ~30秒 (默认)
-codeguardian scan . --depth deep       # ~2-5分钟 (含AI调用)
+codeguardian scan . --review-mode ai_off              # 仅静态
+codeguardian scan . --review-mode standard            # 默认
+codeguardian scan . --review-mode ultra --incremental # 对 diff 做深度 AI
 ```
 
 ---
@@ -355,8 +369,11 @@ AI 功能**可选**，需要 OpenAI 兼容的 API 端点。CodeGuardian 完全�
 
 ```toml
 # codeguardian.toml
+[scan]
+review_mode = "standard"               # ai_off | standard | ultra（唯一 AI 开关）
+
 [ai]
-enabled = true
+# ai.enabled 由 scan.review_mode 派生，无需手动设置
 provider = "openai"                    # 任何 OpenAI 兼容端点
 model = "gpt-4o"
 api_key_env = "CODEGUARDIAN_API_KEY"
@@ -380,7 +397,7 @@ CODEGUARDIAN_API_KEY=sk-...
 - 跨文件 caller/callee（critical 最多2跳）
 - 高误报规则的增强证据（共享状态使用、catch体、生命周期令牌）
 
-### AI 深度审查 (depth=deep)
+### AI 深度审查 (review_mode=standard/ultra)
 
 7步管线执行 LLM 驱动的代码审查：
 
@@ -397,7 +414,7 @@ CODEGUARDIAN_API_KEY=sk-...
 - 1个验证者验证合并发现，过滤 ~60-70% 误报
 
 ```bash
-codeguardian scan . --depth deep --review-mode ultra
+codeguardian scan . --review-mode ultra
 ```
 
 ---
@@ -494,7 +511,7 @@ codeguardian scan .        # 之后只报告新增发现
 
 ```toml
 [scan]
-depth = "standard"                    # quick | standard | deep
+review_mode = "standard"              # ai_off | standard | ultra（唯一 AI 开关）
 languages = ["java", "go", "python"]  # 不填则自动检测
 exclude = ["vendor/", "generated/"]
 
@@ -504,13 +521,13 @@ min_severity = "low"
 # disabled = ["STYLE-*"]
 
 [ai]
-enabled = true
+# ai.enabled 由 scan.review_mode 派生，无需手动设置
 provider = "openai"
 model = "gpt-4o"
 api_key_env = "CODEGUARDIAN_API_KEY"
 
 [ai.deep_review]
-review_mode = "standard"              # standard | ultra
+# review_mode 由 scan.review_mode 派生（standard/ultra），无需在此设置
 
 [ai.ai_verify]
 enabled = true

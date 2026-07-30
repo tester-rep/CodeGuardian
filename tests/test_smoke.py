@@ -47,7 +47,7 @@ class TestModels:
     def test_scan_request(self):
 
         req = ScanRequest(project_path=Path("."))
-        assert req.depth == "standard"
+        assert req.review_mode == "standard"
         assert len(req.report_formats) >= 1
 
     def test_scan_result(self):
@@ -85,7 +85,7 @@ class TestConfig:
     def test_default_config(self):
         config = load_app_config(None)  # No file → defaults
         assert config is not None
-        assert config.scan.depth == "standard"
+        assert config.scan.review_mode == "standard"
 
     def test_config_schema(self):
         from codeguardian.config.schema import AppConfig
@@ -252,7 +252,7 @@ class TestOrchestrator:
                 ScanRequest(
                     project_path=Path("."),
                     report_formats=["json"],
-                    depth="quick",
+                    review_mode="ai_off",
                 )
             )
         )

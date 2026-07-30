@@ -16,7 +16,7 @@ from codeguardian.models.scan import ScanRequest
 def watch_command(
     project: str = typer.Argument(".", help="Project path to watch"),
     interval: int = typer.Option(5, "--interval", "-i", help="Polling interval in seconds"),
-    depth: str = typer.Option("quick", "--depth", "-d", help="Scan depth: quick / standard / deep"),
+    review_mode: str = typer.Option("ai_off", "--review-mode", help="AI review mode: ai_off / standard / ultra"),
     report: str = typer.Option("terminal", "--report", "-r", help="Report formats (comma-separated)"),
 ) -> None:
     """Watch for file changes and auto-rescan on modification."""
@@ -27,7 +27,7 @@ def watch_command(
     report_formats = [fmt.strip() for fmt in report.split(",") if fmt.strip()]
 
     console.print(f"[bold cyan]👁 Watching[/bold cyan] {project_path}")
-    console.print(f"[dim]Interval: {interval}s | Depth: {depth} | Reports: {', '.join(report_formats)}[/dim]")
+    console.print(f"[dim]Interval: {interval}s | Review: {review_mode} | Reports: {', '.join(report_formats)}[/dim]")
     console.print("[dim]Press Ctrl+C to stop.[/dim]\n")
 
     # Build initial snapshot of file mtimes
@@ -53,7 +53,7 @@ def watch_command(
             request = ScanRequest(
                 project_path=project_path,
                 report_formats=report_formats,
-                depth=depth,
+                review_mode=review_mode,
                 incremental=True,
             )
 

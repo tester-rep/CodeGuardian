@@ -1,14 +1,11 @@
 [scan]
-depth = "standard"
+review_mode = "ai_off"
 languages = ["java"]
 exclude_paths = ["build/**", "buildproject/**", "lib/**", "reports/**"]
 
 [reports]
 formats = ["json"]
 output_dir = "reports"
-
-[ai]
-enabled = false
 
 [ai_verify]
 enabled = false

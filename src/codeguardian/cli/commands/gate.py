@@ -62,7 +62,7 @@ def gate_command(
             ScanRequest(
                 project_path=project_path,
                 report_formats=["json"],
-                depth="quick",
+                review_mode="ai_off",
             )
         )
     )

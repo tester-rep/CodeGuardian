@@ -19,7 +19,7 @@ class ScanRequest(BaseModel):
 
     project_path: Path
     report_formats: list[str] = Field(default_factory=lambda: ["terminal"])
-    depth: str = "standard"
+    review_mode: str = "standard"  # ai_off / standard / ultra
     dimensions: list[str] | None = None  # null = all
     languages: list[str] | None = None  # null = auto-detect
     incremental: bool = False
@@ -64,8 +64,9 @@ class ScanResult(BaseModel):
     finished_at: str = ""
     duration_seconds: float = 0.0
     project_path: str = ""
-    execution_mode: str = "standard"
-    depth: str = "standard"
+    # Two orthogonal execution axes (replaces the old conflated execution_mode/depth):
+    coverage: str = "full"  # full / incremental
+    ai_mode: str = "standard"  # ai_off / standard / ultra / degraded(ai_off)
 
     # Main results
     project_profile: ProjectProfile

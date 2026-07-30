@@ -40,7 +40,7 @@ One command gives you a full audit across code quality, security, performance, a
 - [Features](#features)
 - [Architecture](#architecture)
 - [Usage](#usage)
-- [Scan Depth Modes](#scan-depth-modes)
+- [Review Modes & Coverage](#review-modes--coverage)
 - [Supported Languages](#supported-languages)
 - [Analysis Engines](#analysis-engines)
 - [Cross-Function Detection](#cross-function-detection)
@@ -162,17 +162,20 @@ codeguardian scan /path/to/project
 ### Scan with Options
 
 ```bash
-# Deep scan with AI review + multiple output formats
-codeguardian scan . --depth deep --report terminal,json,html
+# Full scan with AI review + multiple output formats
+codeguardian scan . --review-mode standard --report terminal,json,html
 
-# Quick scan (fast, subset of engines, no PCI)
-codeguardian scan . --depth quick
+# Incremental scan (only changed files; call graph stays full for cross-function)
+codeguardian scan . --incremental --since HEAD~1
 
-# Deep scan with ultra review mode (3 explorers + 1 critic)
-codeguardian scan . --depth deep --review-mode ultra
+# Ultra review mode (3 explorers + 1 critic)
+codeguardian scan . --review-mode ultra
+
+# Disable AI entirely (static engines still run in full)
+codeguardian scan . --review-mode ai_off
 
 # Drop AI-confirmed false positives from report
-codeguardian scan . --depth deep --drop-false-positives
+codeguardian scan . --review-mode standard --drop-false-positives
 
 # Bypass cache for fresh analysis
 codeguardian scan . --no-cache
@@ -226,18 +229,29 @@ codeguardian trend .
 
 ---
 
-## Scan Depth Modes
+## Review Modes & Coverage
 
-| Mode | Engines | PCI | AI Review | Concurrency | Use Case |
-|------|---------|-----|-----------|-------------|----------|
-| `quick` | 5 (structure, metrics, defect, performance, testing) | No | No | 2 | Pre-commit hook, fast feedback |
-| `standard` | All 12 | Yes | No | 4 | Default CI pipeline scan |
-| `deep` | All 12 | Yes (with propagation) | Yes | 6 | Release candidate review |
+Two orthogonal axes replace the old single `--depth` flag:
+
+**AI review mode** (`--review-mode`, or `scan.review_mode`) — the single AI switch:
+
+| Mode | Static Engines | PCI | AI Deep Review | Use Case |
+|------|----------------|-----|----------------|----------|
+| `ai_off` | All 11 | Yes | No | Fast, offline, no API key |
+| `standard` | All 11 | Yes | Single-pass | Default CI pipeline scan |
+| `ultra` | All 11 | Yes | Multi-explorer + critic | Release candidate review |
+
+**Coverage** (`--incremental` / `--since`) — independent of review mode:
+
+| Flag | Files analyzed | Notes |
+|------|----------------|-------|
+| _(none)_ | Full project | Default |
+| `--incremental [--since REV]` | Changed files only | Call graph (PCI) is still built on the **full** project so cross-function analysis stays complete; cross-function findings are then narrowed to changed files |
 
 ```bash
-codeguardian scan . --depth quick      # ~5s on medium projects
-codeguardian scan . --depth standard   # ~30s (default)
-codeguardian scan . --depth deep       # ~2-5min (includes AI calls)
+codeguardian scan . --review-mode ai_off              # static-only
+codeguardian scan . --review-mode standard            # default
+codeguardian scan . --review-mode ultra --incremental # deep AI on a diff
 ```
 
 ---
@@ -378,7 +392,11 @@ AI features are **optional** and require an OpenAI-compatible API endpoint. Code
 
 ```toml
 # codeguardian.toml
+[scan]
+review_mode = "standard"        # ai_off | standard | ultra (the single AI switch)
+
 [ai]
+# ai.enabled is derived from scan.review_mode; no need to set it here.
 provider = "openai"             # Any OpenAI-compatible endpoint
 api_base = "https://api.openai.com/v1"
 default_model = "gpt-4o"
@@ -409,7 +427,7 @@ Verdicts:
 | `false` | False positive — severity downgraded, tagged `ai-fp` |
 | `uncertain` | Kept as-is, tagged `ai-uncertain` |
 
-### AI Deep Review (depth=deep)
+### AI Deep Review (review_mode=standard/ultra)
 
 A 7-step pipeline that performs LLM-powered code review:
 
@@ -429,7 +447,7 @@ A 7-step pipeline that performs LLM-powered code review:
 - 1 Critic agent verifies combined findings, filtering ~60-70% of false positives
 
 ```bash
-codeguardian scan . --depth deep --review-mode ultra
+codeguardian scan . --review-mode ultra
 ```
 
 ---
@@ -540,7 +558,7 @@ The net effect of these reductions is continuously measured by `benchmark/fp_cor
 
 ```toml
 [scan]
-depth = "standard"                    # quick | standard | deep
+review_mode = "standard"              # ai_off | standard | ultra (single AI switch)
 languages = ["java", "go", "python"]  # auto-detected if omitted
 exclude = ["vendor/", "generated/"]
 
@@ -561,7 +579,7 @@ default_model = "gpt-4o"
 summary_model = "gpt-4o-mini"
 
 [ai.deep_review]
-review_mode = "standard"              # standard | ultra
+# review_mode is derived from scan.review_mode (standard/ultra); do not set here.
 max_chunks = 50
 token_budget = 100000
 

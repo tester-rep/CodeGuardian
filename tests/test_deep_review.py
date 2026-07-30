@@ -438,7 +438,9 @@ class TestResultMerger:
         assert len(output.primary) == 0
         assert len(output.supplementary) == 0
 
-    def test_confirmed_by_local_becomes_primary(self):
+    def test_confirmed_by_local_upgrades_existing(self):
+        """When AI and local engine agree, upgrade the existing finding
+        in-place instead of creating a duplicate."""
         existing = Finding(
             id="SEC-001", title="SQL Injection", category="security",
             severity=Severity.HIGH, confidence=Confidence.MEDIUM,
@@ -452,14 +454,49 @@ class TestResultMerger:
                 AIFindingRaw(
                     title="SQL Injection", category="security", severity="high",
                     confidence=4, line_start=10, line_end=10,
+                    description="Direct string concatenation in SQL query",
+                    fix_suggestion="Use PreparedStatement with parameterized queries",
                 ),
             ],
             status="done",
         )
         output = merger.merge([result])
-        # Even though AI confidence=4 < threshold=6, local confirmation → primary
-        assert len(output.primary) == 1
-        assert "source:both" in output.primary[0].tags
+        # No new finding created — existing one upgraded in-place
+        assert len(output.primary) == 0
+        assert len(output.supplementary) == 0
+        # Existing finding is upgraded
+        assert existing.confidence == Confidence.HIGH
+        assert existing.evidence_level == "likely"
+        assert "source:both" in existing.tags
+        assert "AI 与本地规则" in existing.verification_summary
+        # AI fix suggestion merged when local finding lacks one
+        assert existing.fix_suggestion == "Use PreparedStatement with parameterized queries"
+
+    def test_confirmed_by_local_keeps_existing_fix_suggestion(self):
+        """When local finding already has fix_suggestion, AI suggestion is not overwritten."""
+        existing = Finding(
+            id="SEC-001", title="SQL Injection", category="security",
+            severity=Severity.HIGH, confidence=Confidence.MEDIUM,
+            location=Location(file_path="a.py", line_start=10),
+            source_engine="security",
+            fix_suggestion="Local rule remediation",
+        )
+        merger = ResultMerger(confidence_threshold=6, existing_findings=[existing])
+        result = ReviewResult(
+            chunk_file_path="a.py",
+            findings=[
+                AIFindingRaw(
+                    title="SQL Injection", category="security", severity="high",
+                    confidence=8, line_start=10, line_end=10,
+                    fix_suggestion="AI suggestion",
+                ),
+            ],
+            status="done",
+        )
+        output = merger.merge([result])
+        assert len(output.primary) == 0
+        # Original fix_suggestion preserved
+        assert existing.fix_suggestion == "Local rule remediation"
 
     def test_skipped_chunks_counted(self):
         merger = ResultMerger(confidence_threshold=6)
@@ -1763,7 +1800,8 @@ class TestMergerSeverityCap:
         assert output.primary[0].severity == Severity.HIGH
 
     def test_confirmed_by_local_can_keep_high(self):
-        """When local engine also finds the same issue, severity is preserved."""
+        """When local engine also finds the same issue, severity is preserved.
+        The existing finding is upgraded in-place, not duplicated."""
         existing = Finding(
             id="SEC-001", title="SQL Injection", category="security",
             severity=Severity.HIGH, confidence=Confidence.MEDIUM,
@@ -1785,8 +1823,11 @@ class TestMergerSeverityCap:
             status="done",
         )
         output = merger.merge([result])
-        # Capped to HIGH (AI single-source rule applies even with local match;
-        # local match boosts confidence, not severity).
-        assert len(output.primary) == 1
-        assert output.primary[0].severity == Severity.HIGH
+        # No new finding created — existing one upgraded in-place
+        assert len(output.primary) == 0
+        assert len(output.supplementary) == 0
+        # Existing finding severity preserved (HIGH, not capped by AI single-source rule)
+        assert existing.severity == Severity.HIGH
+        assert existing.confidence == Confidence.HIGH
+        assert "source:both" in existing.tags
 

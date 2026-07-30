@@ -44,7 +44,7 @@ def analyze_command(
     request = ScanRequest(
         project_path=project_path,
         report_formats=["json"],
-        depth="deep",
+        review_mode="standard",
         dimensions=[dimension],
     )
 

@@ -32,7 +32,7 @@ class ScanContext(BaseModel):
     repo_type: str = "single"  # single / monorepo
 
     # Execution control
-    depth: str = "standard"
+    review_mode: str = "standard"  # ai_off / standard / ultra
     dimensions: list[str] | None = None
     languages: list[str] | None = None
     incremental: bool = False
@@ -58,19 +58,25 @@ class ScanContext(BaseModel):
         return name
 
     @property
-    def is_quick(self) -> bool:
-        return self.depth == "quick"
+    def ai_enabled(self) -> bool:
+        return self.review_mode != "ai_off"
 
-    @property
-    def is_deep(self) -> bool:
-        return self.depth == "deep"
+    def collect_candidate_files(
+        self,
+        root: Path,
+        suffixes: set[str] | None = None,
+        ignore_incremental_scope: bool = False,
+    ) -> list[Path]:
+        """Collect candidate files, honoring incremental target scopes when present.
 
-    def collect_candidate_files(self, root: Path, suffixes: set[str] | None = None) -> list[Path]:
-        """Collect candidate files, honoring incremental target scopes when present."""
+        Set ``ignore_incremental_scope=True`` to force a full-project scan even in
+        incremental mode. Used by the PCI builder so the call graph stays complete
+        (cross-function analysis would otherwise run on a truncated graph).
+        """
         from codeguardian.utils.ignore import should_ignore
 
         candidates: list[Path]
-        if self.target_files:
+        if self.target_files and not ignore_incremental_scope:
             candidates = [(root / rel_path).resolve() for rel_path in self.target_files]
         else:
             candidates = [path for path in root.rglob("*")]

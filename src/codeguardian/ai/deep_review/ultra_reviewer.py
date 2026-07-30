@@ -329,25 +329,46 @@ class UltraReviewer:
             anti_hallucination=ANTI_HALLUCINATION_RULES,
         )
 
-        try:
-            gen_result = await self._provider.generate_with_usage(
-                prompt,
-                system_message=f"你是 CodeGuardian {dim_def['name']}，专注{dim_id}维度的代码审查。严格返回 JSON。",
-            )
+        max_retries = 2  # initial call + 1 retry for transient failures
+        for attempt in range(max_retries):
+            try:
+                gen_result = await self._provider.generate_with_usage(
+                    prompt,
+                    system_message=f"你是 CodeGuardian {dim_def['name']}，专注{dim_id}维度的代码审查。严格返回 JSON。",
+                )
 
-            tokens = gen_result.usage.total_tokens
-            if tokens == 0:
-                tokens = (len(prompt) + len(gen_result.text)) // 4
-            self._budget.consume(tokens)
-            self._total_usage.prompt_tokens += gen_result.usage.prompt_tokens
-            self._total_usage.completion_tokens += gen_result.usage.completion_tokens
-            self._total_usage.total_tokens += gen_result.usage.total_tokens
+                tokens = gen_result.usage.total_tokens
+                if tokens == 0:
+                    tokens = (len(prompt) + len(gen_result.text)) // 4
+                self._budget.consume(tokens)
+                self._total_usage.prompt_tokens += gen_result.usage.prompt_tokens
+                self._total_usage.completion_tokens += gen_result.usage.completion_tokens
+                self._total_usage.total_tokens += gen_result.usage.total_tokens
 
-            return self._parse_explorer_response(gen_result.text, dim_id)
+                return self._parse_explorer_response(gen_result.text, dim_id)
 
-        except Exception as exc:
-            logger.warning("Explorer [%s] error: %s", dim_id, exc)
-            return []
+            except Exception as exc:
+                exc_str = str(exc).lower()
+                is_rate_limit = "429" in exc_str or "rate" in exc_str
+                is_timeout = "timeout" in exc_str
+
+                # Extract server-provided Retry-After when available.
+                wait_s = 5
+                if exc.__cause__ is not None and hasattr(exc.__cause__, "wait_seconds"):
+                    wait_s = exc.__cause__.wait_seconds
+                elif is_timeout:
+                    wait_s = 10
+
+                if (is_rate_limit or is_timeout) and attempt < max_retries - 1:
+                    logger.info(
+                        "Explorer [%s] transient error, retrying after %ds (attempt %d/%d)",
+                        dim_id, wait_s, attempt + 1, max_retries,
+                    )
+                    await asyncio.sleep(wait_s)
+                    continue
+
+                logger.warning("Explorer [%s] error: %s", dim_id, exc)
+                return []
 
     async def _run_critic(
         self, context: ContextPack, candidates: list[AIFindingRaw],

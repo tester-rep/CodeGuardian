@@ -31,7 +31,7 @@ def test_analyze_supports_performance_dimension(monkeypatch) -> None:
 
     async def fake_run_scan(_self, request):
         captured["dimensions"] = request.dimensions
-        captured["depth"] = request.depth
+        captured["review_mode"] = request.review_mode
         return _build_snapshot(project_path=request.project_path)
 
     monkeypatch.setattr("codeguardian.cli.commands.analyze.Orchestrator.run_scan", fake_run_scan)
@@ -44,7 +44,7 @@ def test_analyze_supports_performance_dimension(monkeypatch) -> None:
         result = runner.invoke(app, ["analyze", "performance", str(project)])
 
     assert result.exit_code == 0
-    assert captured == {"dimensions": ["performance"], "depth": "deep"}
+    assert captured == {"dimensions": ["performance"], "review_mode": "standard"}
     assert "[PERFORMANCE]" in result.stdout
 
 
@@ -81,7 +81,7 @@ def test_scan_supports_performance_dimension(monkeypatch) -> None:
 
     async def fake_run_scan(_self, request):
         captured["dimensions"] = request.dimensions
-        captured["depth"] = request.depth
+        captured["review_mode"] = request.review_mode
         return _build_snapshot(project_path=request.project_path)
 
     monkeypatch.setattr("codeguardian.cli.commands.scan.Orchestrator.run_scan", fake_run_scan)
@@ -94,7 +94,7 @@ def test_scan_supports_performance_dimension(monkeypatch) -> None:
         result = runner.invoke(app, ["scan", str(project), "--dimensions", "performance"])
 
     assert result.exit_code == 0
-    assert captured == {"dimensions": ["performance"], "depth": "standard"}
+    assert captured == {"dimensions": ["performance"], "review_mode": "standard"}
 
 
 
@@ -105,7 +105,7 @@ def test_analyze_supports_architecture_dimension(monkeypatch) -> None:
 
     async def fake_run_scan(_self, request):
         captured["dimensions"] = request.dimensions
-        captured["depth"] = request.depth
+        captured["review_mode"] = request.review_mode
         return _build_snapshot(project_path=request.project_path)
 
     monkeypatch.setattr("codeguardian.cli.commands.analyze.Orchestrator.run_scan", fake_run_scan)
@@ -118,7 +118,7 @@ def test_analyze_supports_architecture_dimension(monkeypatch) -> None:
         result = runner.invoke(app, ["analyze", "architecture", str(project)])
 
     assert result.exit_code == 0
-    assert captured == {"dimensions": ["architecture"], "depth": "deep"}
+    assert captured == {"dimensions": ["architecture"], "review_mode": "standard"}
     assert "[ARCHITECTURE]" in result.stdout
 
 
@@ -127,7 +127,7 @@ def test_scan_supports_all_dimensions(monkeypatch) -> None:
 
     async def fake_run_scan(_self, request):
         captured["dimensions"] = request.dimensions
-        captured["depth"] = request.depth
+        captured["review_mode"] = request.review_mode
         return _build_snapshot(project_path=request.project_path)
 
     monkeypatch.setattr("codeguardian.cli.commands.scan.Orchestrator.run_scan", fake_run_scan)
@@ -152,7 +152,7 @@ def test_scan_uses_project_config_defaults_when_options_omitted() -> None:
         (project / "sample.py").write_text("print('hello')\n", encoding="utf-8")
         (project / "codeguardian.toml").write_text(
             "[scan]\n"
-            "depth = \"quick\"\n\n"
+            "review_mode = \"ai_off\"\n\n"
             "[reports]\n"
             "formats = [\"json\"]\n",
             encoding="utf-8",
@@ -310,7 +310,7 @@ def test_baseline_command_runs_fresh_scan(monkeypatch) -> None:
     captured = {}
 
     async def fake_run_scan(_self, request):
-        captured["depth"] = request.depth
+        captured["review_mode"] = request.review_mode
         captured["dimensions"] = request.dimensions
         captured["report_formats"] = request.report_formats
         return _build_snapshot(project_path=request.project_path)
@@ -322,11 +322,11 @@ def test_baseline_command_runs_fresh_scan(monkeypatch) -> None:
         project.mkdir()
         (project / "sample.py").write_text("print('hello')\n", encoding="utf-8")
 
-        result = runner.invoke(app, ["baseline", str(project), "--output", "quality-baseline.json", "--depth", "quick"])
+        result = runner.invoke(app, ["baseline", str(project), "--output", "quality-baseline.json", "--review-mode", "ai_off"])
 
         assert result.exit_code == 0
         assert (project / "quality-baseline.json").exists()
-        assert captured == {"depth": "quick", "dimensions": None, "report_formats": []}
+        assert captured == {"review_mode": "ai_off", "dimensions": None, "report_formats": []}
 
 
 

@@ -104,7 +104,7 @@ class DiffService:
         request = ScanRequest(
             project_path=root,
             report_formats=[],
-            depth=config.scan.depth,
+            review_mode=config.scan.review_mode,
             dimensions=config.scan.dimensions,
             languages=config.scan.languages,
         )

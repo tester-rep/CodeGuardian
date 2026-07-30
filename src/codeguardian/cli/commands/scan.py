@@ -44,7 +44,7 @@ def scan_command(
         None,
         "--depth",
         "-d",
-        help="Analysis depth: quick / standard / deep (default from config)",
+        help="[deprecated] 已废弃并忽略；引擎恒为全量。AI 强度用 --review-mode，覆盖度用 --incremental。",
     ),
 
     dimensions: str | None = typer.Option(
@@ -111,7 +111,7 @@ def scan_command(
     review_mode: str | None = typer.Option(
         None,
         "--review-mode",
-        help="AI deep review mode: standard (single-pass) / ultra (multi-explorer + critic verification). Default from config.",
+        help="AI review mode: ai_off (禁用AI) / standard (单-pass) / ultra (多探索+验证). Default from config.",
     ),
     no_cache: bool = typer.Option(
         False,
@@ -206,15 +206,21 @@ def _run_scan(
     if baseline is not None:
         app_config.rules.baseline_path = baseline
 
+    if depth is not None:
+        console.print(
+            "[yellow][deprecated][/yellow] --depth 已废弃并忽略；引擎恒为全量。"
+            "AI 强度请用 --review-mode，覆盖度请用 --incremental。"
+        )
+
     if review_mode is not None:
         mode = review_mode.strip().lower()
-        if mode not in {"standard", "ultra"}:
+        if mode not in {"ai_off", "standard", "ultra"}:
             console.print(
                 f"[red]Invalid review mode:[/red] {review_mode}\n"
-                "Valid options: standard, ultra"
+                "Valid options: ai_off, standard, ultra"
             )
             raise typer.Exit(code=1)
-        app_config.deep_review.review_mode = mode
+        app_config.apply_review_mode(mode)
 
     requested_dimensions = (
         [d.strip() for d in dimensions.split(",") if d.strip()]
@@ -247,7 +253,6 @@ def _run_scan(
         )
         raise typer.Exit(code=1)
 
-    resolved_depth = depth.strip().lower() if depth is not None else app_config.scan.depth
     verify_mode = verify.strip().lower()
     if verify_mode not in {"off", "generate", "syntax", "safe"}:
         console.print(
@@ -262,7 +267,7 @@ def _run_scan(
 
         project_path=project_path,
         report_formats=report_formats,
-        depth=resolved_depth,
+        review_mode=app_config.scan.review_mode,
         dimensions=requested_dimensions,
         languages=[ln.strip() for ln in lang.split(",")] if lang else None,
         incremental=incremental or since is not None,
@@ -282,17 +287,14 @@ def _run_scan(
             v_model = app_config.ai_verify.verify_model or app_config.ai.summary_model or app_config.ai.model
             drop_label = "丢弃 FP" if (drop_false_positives or app_config.ai_verify.drop_false_positives) else "降级保留 FP"
             console.print(f"  [green][OK][/green] AI Verifier 已启用 (model={v_model}, 策略={drop_label})")
-        if resolved_depth == "deep" and app_config.deep_review.enabled:
-            dr_model = app_config.deep_review.review_model or app_config.ai.model
-            rm = app_config.deep_review.review_mode
-            mode_label = "Ultra (多维探索+验证)" if rm == "ultra" else "Standard (单 pass)"
-            console.print(f"  [green][OK][/green] AI Deep Review 已启用 (model={dr_model}, mode={mode_label})")
-            if no_cache:
-                console.print("  [yellow][!][/yellow] Deep Review 缓存已禁用 (--no-cache) — 所有 chunk 将重新调用 AI")
-        elif resolved_depth != "deep":
-            console.print(f"  [dim](i) Deep Review 仅在 --depth deep 时启用 (当前: {resolved_depth})[/dim]")
+        dr_model = app_config.deep_review.review_model or app_config.ai.model
+        rm = app_config.deep_review.review_mode
+        mode_label = "Ultra (多维探索+验证)" if rm == "ultra" else "Standard (单 pass)"
+        console.print(f"  [green][OK][/green] AI Deep Review 已启用 (model={dr_model}, mode={mode_label})")
+        if no_cache:
+            console.print("  [yellow][!][/yellow] Deep Review 缓存已禁用 (--no-cache) — 所有 chunk 将重新调用 AI")
     else:
-        console.print("  [yellow][!][/yellow] AI 未启用 — 设置 [ai] enabled = true 以开启 AI 检测")
+        console.print("  [yellow][!][/yellow] AI 未启用 (review_mode=ai_off) — 使用 --review-mode standard/ultra 开启 AI 检测")
 
     orchestrator = Orchestrator(app_config)
     result = asyncio.run(orchestrator.run_scan(request))

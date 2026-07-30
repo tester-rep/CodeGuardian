@@ -24,7 +24,7 @@ from codeguardian.models.finding import Finding
 def test_load_rules_config_from_toml() -> None:
     config_text = """
 [scan]
-depth = "quick"
+review_mode = "ai_off"
 
 [rules]
 enabled = ["SQL-INJECTION-RISK"]
@@ -41,7 +41,7 @@ baseline_path = ".codeguardian/latest.json"
 
         config = load_app_config(str(config_path))
 
-    assert config.scan.depth == "quick"
+    assert config.scan.review_mode == "ai_off"
     assert config.rules.enabled == ["SQL-INJECTION-RISK"]
     assert config.rules.disabled == ["PRINT-DEBUG"]
     assert config.rules.include_tags == ["sql"]

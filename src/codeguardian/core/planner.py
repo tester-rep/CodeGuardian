@@ -36,10 +36,6 @@ DIMENSION_ENGINE_MAP: dict[str, tuple[str, ...]] = {
 
 
 STANDARD_ENABLED_ENGINES = ["structure", "metrics", "complexity", "defect", "security", "performance", "testing", "git", "oo_design", "dependency", "cross_function"]
-QUICK_ENABLED_ENGINES = ["structure", "metrics", "defect", "performance", "testing"]
-
-
-DEEP_ENABLED_ENGINES = STANDARD_ENABLED_ENGINES.copy()
 
 
 # Engines that are NOT enabled by default and must be explicitly opted-in via
@@ -83,15 +79,12 @@ def find_unsupported_dimensions(dimensions: list[str] | None) -> list[str]:
 
 
 def build_plan(ctx: ScanContext) -> AnalysisPlan:
-    """Build an analysis plan based on the scan context."""
-    plan = AnalysisPlan()
+    """Build an analysis plan based on the scan context.
 
-    if ctx.is_quick:
-        plan.enabled_engines = QUICK_ENABLED_ENGINES.copy()
-        plan.concurrency_limit = 2
-    elif ctx.is_deep:
-        plan.enabled_engines = DEEP_ENABLED_ENGINES.copy()
-        plan.concurrency_limit = 6
+    Engine set is fixed to the full standard set; coverage (full vs incremental)
+    is controlled independently via ``ctx.incremental``/``target_files``.
+    """
+    plan = AnalysisPlan()
 
     normalized_dimensions = normalize_dimensions(ctx.dimensions)
     if normalized_dimensions:

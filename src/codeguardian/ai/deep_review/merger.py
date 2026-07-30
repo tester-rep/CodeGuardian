@@ -138,13 +138,35 @@ class ResultMerger:
                 )
 
                 if is_confirmed_by_local:
-                    # source = "both" → always primary, boost confidence
-                    finding.confidence = Confidence.HIGH
-                    finding.evidence_level = "likely"
-                    finding.verification_status = "unverified"
-                    finding.verification_summary = "AI 与本地规则在相近位置均发现风险，证据等级提升；尚未执行临时复现测试。"
-                    finding.tags.append("source:both")
-                    primary.append(finding)
+                    # Upgrade the existing local finding in-place instead of
+                    # creating a duplicate. The local finding already carries
+                    # curated metadata (rule_id, CWE, remediation); the AI
+                    # confirmation boosts confidence and adds context.
+                    local_finding = self._find_local_finding(
+                        ai_finding, result.chunk_file_path,
+                    )
+                    if local_finding is not None:
+                        local_finding.confidence = Confidence.HIGH
+                        local_finding.evidence_level = "likely"
+                        local_finding.verification_status = "unverified"
+                        local_finding.verification_summary = (
+                            f"AI 与本地规则在相近位置均发现风险: "
+                            f"{ai_finding.description[:200]}"
+                        )
+                        if "source:both" not in local_finding.tags:
+                            local_finding.tags.append("source:both")
+                        # Merge AI fix suggestion when local finding lacks one.
+                        if not local_finding.fix_suggestion and ai_finding.fix_suggestion:
+                            local_finding.fix_suggestion = ai_finding.fix_suggestion
+                    else:
+                        # Fallback: lookup key missed (e.g. fuzzy match found
+                        # but exact key lookup failed). Create new finding.
+                        finding.confidence = Confidence.HIGH
+                        finding.evidence_level = "likely"
+                        finding.verification_status = "unverified"
+                        finding.verification_summary = "AI 与本地规则在相近位置均发现风险，证据等级提升；尚未执行临时复现测试。"
+                        finding.tags.append("source:both")
+                        primary.append(finding)
                 elif ai_finding.confidence >= self._threshold:
                     # High AI confidence → primary
                     finding.evidence_level = "suspected"
@@ -259,19 +281,25 @@ class ResultMerger:
         )
 
 
-    def _is_confirmed_by_local(self, ai_finding: AIFindingRaw, file_path: str) -> bool:
-        """Check if a local engine finding overlaps with this AI finding."""
+    def _find_local_finding(
+        self, ai_finding: AIFindingRaw, file_path: str,
+    ) -> Finding | None:
+        """Return the existing local finding that overlaps with this AI finding."""
         key = f"{file_path}:{ai_finding.line_start}"
         if key in self._existing_by_location:
-            return True
+            return self._existing_by_location[key]
 
         # Fuzzy match: check nearby lines (±3)
         for offset in range(-3, 4):
             check_key = f"{file_path}:{ai_finding.line_start + offset}"
             if check_key in self._existing_by_location:
-                return True
+                return self._existing_by_location[check_key]
 
-        return False
+        return None
+
+    def _is_confirmed_by_local(self, ai_finding: AIFindingRaw, file_path: str) -> bool:
+        """Check if a local engine finding overlaps with this AI finding."""
+        return self._find_local_finding(ai_finding, file_path) is not None
 
 
 class MergeOutput:

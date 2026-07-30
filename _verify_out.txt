@@ -1,0 +1,207 @@
+=== 总览 ===
+期望 bug 数: 31
+报告 findings 去重后: 50
+
+=== 命中(TP) 14 ===
+BUG-001  期望[JAVA-STRING-EQ-OPERATOR] -> 实测[JAVA-STRING-EQ-OPERATOR] sev=high/high @UserAuthenticator.java:35 (精确)
+BUG-002  期望[MONEY-FLOAT-PRECISION] -> 实测[MONEY-FLOAT-PRECISION] sev=high/medium @PriceCalculator.java:33 (精确)
+BUG-003  期望[HTTP-NO-TIMEOUT] -> 实测[HTTP-NO-TIMEOUT] sev=medium/high @ApiClient.java:31 (精确)
+BUG-004  期望[HARDCODED-CREDENTIAL] -> 实测[HARDCODED-PASSWORD] sev=critical/high @DatabaseConfig.java:16 (相近)
+BUG-005  期望[STATIC-SIMPLEDATEFORMAT] -> 实测[STATIC-SIMPLEDATEFORMAT] sev=high/high @DateFormatter.java:13 (精确)
+BUG-007  期望[REDOS-RISK] -> 实测[REDOS-RISK] sev=high/medium @InputValidator.java:14 (精确)
+BUG-009  期望[SELF-ASSIGNMENT] -> 实测[SELF-ASSIGNMENT] sev=medium/high @ConfigManager.java:28 (精确)
+BUG-011  期望[DIVISION-BY-ZERO-RISK] -> 实测[MONEY-FLOAT-PRECISION] sev=info/medium @StatsCalculator.java:21 (同位置弱匹配)
+BUG-015  期望[EXECUTOR-NOT-SHUTDOWN] -> 实测[EXECUTOR-NOT-SHUTDOWN] sev=info/medium @TaskExecutor.java:13 (精确)
+BUG-023  期望[SQL-IN-LOOP] -> 实测[MONEY-FLOAT-PRECISION] sev=high/medium @ReportGenerator.java:27 (同位置弱匹配)
+BUG-025  期望[TAINT-CROSS-FUNCTION] -> 实测[BROAD-EXCEPT] sev=info/high @PdfRenderer.java:21 (同位置弱匹配)
+BUG-029  期望[RESOURCE-CLOSE-NOT-GUARANTEED] -> 实测[EMPTY-EXCEPT] sev=info/high @ConnectionManager.java:29 (同位置弱匹配)
+BUG-030  期望[INTEGER-CACHE-PITFALL] -> 实测[JAVA-INTEGER-BOXING-EQ] sev=high/medium @OrderCounter.java:26 (相近)
+BUG-031  期望[STATIC-SIMPLEDATEFORMAT] -> 实测[STATIC-SIMPLEDATEFORMAT] sev=high/high @LogParser.java:15 (精确)
+
+=== 漏报(FN) 17 ===
+BUG-006  [BUSY-WAIT] event-bus @EventListener.java:28 cross_fn=false
+BUG-008  [ALWAYS-TRUE-FALSE] discount-engine @DiscountEngine.java:32 cross_fn=false
+BUG-010  [COLLECTION-INDEX-OUT-OF-BOUNDS] data-exporter @ListPaginator.java:30 cross_fn=false
+BUG-012  [EMPTY-EXCEPT] log-parser @LogParser.java:34 cross_fn=false
+BUG-013  [SQL-INJECTION] user-management @UserDao.java:22 cross_fn=true
+BUG-014  [NULL-PROP-UNCHECKED] order-processor @OrderService.java:18 cross_fn=true
+BUG-016  [INFINITE-LOOP-RISK] data-cleanup @CleanupService.java:35 cross_fn=true
+BUG-017  [BIZ-NO-TRANSACTION] payment-gateway @PaymentService.java:28 cross_fn=true
+BUG-018  [RESOURCE-LEAK] file-export @FileExporter.java:25 cross_fn=true
+BUG-019  [STATIC-MUTABLE-SHARED-STATE] visit-counter @CounterService.java:9 cross_fn=true
+BUG-020  [IO-IN-LOCK] cache-service @CacheManager.java:30 cross_fn=true
+BUG-021  [EXCEPTION-SWALLOWED-NO-LOG] email-sender @EmailService.java:28 cross_fn=true
+BUG-022  [RETRY-WITHOUT-BACKOFF] retry-handler @RetryExecutor.java:35 cross_fn=true
+BUG-024  [BIZ-PARTIAL-FAILURE] order-fulfill @OrderFulfillService.java:35 cross_fn=true
+BUG-026  [BLOCKING-CALL-IN-ASYNC] async-processor @AsyncTaskProcessor.java:22 cross_fn=true
+BUG-027  [EXCEPTION-LOST-CONTEXT] data-migrator @MigrationService.java:42 cross_fn=true
+BUG-028  [LOCK-LEAKED-ON-CALLEE-THROW] distributed-lock @DistributedLockManager.java:25 cross_fn=true
+
+=== 未匹配 findings(疑似误报/额外) 36 ===
+  MONEY-FLOAT-PRECISION: 7
+  BROAD-EXCEPT: 7
+  NULL-PROP-UNCHECKED: 4
+  SQL-INJECTION-RISK: 3
+  EMPTY-EXCEPT: 2
+  MISSING-TIMEZONE: 2
+  COMMAND-INJECTION-RISK: 1
+  MISSING-CHARSET: 1
+  SWALLOWED-EXCEPTION-FLOW: 1
+  RESOURCE-NEVER-CLOSED-XFUNC: 1
+  INSECURE-RANDOM: 1
+  java.lang.security.audit.crypto.weak-random.weak-random: 1
+  java.lang.security.audit.formatted-sql-string.formatted-sql-string: 1
+  INFINITE-RECURSION-RISK: 1
+  DEEP-NESTING: 1
+  LOG-ONLY-EXCEPT: 1
+  PATH-TRAVERSAL-RISK: 1
+
+=== 全部 findings 规则分布 ===
+  MONEY-FLOAT-PRECISION: 10
+  BROAD-EXCEPT: 8
+  NULL-PROP-UNCHECKED: 4
+  SQL-INJECTION-RISK: 3
+  EMPTY-EXCEPT: 3
+  STATIC-SIMPLEDATEFORMAT: 2
+  MISSING-TIMEZONE: 2
+  COMMAND-INJECTION-RISK: 1
+  MISSING-CHARSET: 1
+  SWALLOWED-EXCEPTION-FLOW: 1
+  RESOURCE-NEVER-CLOSED-XFUNC: 1
+  EXECUTOR-NOT-SHUTDOWN: 1
+  INSECURE-RANDOM: 1
+  java.lang.security.audit.crypto.weak-random.weak-random: 1
+  java.lang.security.audit.formatted-sql-string.formatted-sql-string: 1
+  SELF-ASSIGNMENT: 1
+  INFINITE-RECURSION-RISK: 1
+  DEEP-NESTING: 1
+  LOG-ONLY-EXCEPT: 1
+  HTTP-NO-TIMEOUT: 1
+  JAVA-STRING-EQ-OPERATOR: 1
+  HARDCODED-PASSWORD: 1
+  PATH-TRAVERSAL-RISK: 1
+  REDOS-RISK: 1
+  JAVA-INTEGER-BOXING-EQ: 1
+
+=== 指标 ===
+召回率 recall = 14/31 = 45.16%
+精确率 precision(粗略) = 14/50 = 28.00%
+
+=== 逐 bug: 该文件下所有实测 findings(用于人工语义判定) ===
+
+[BUG-001] 命中 期望[JAVA-STRING-EQ-OPERATOR]@UserAuthenticator.java:38 (cross_fn=false)
+    实测[JAVA-STRING-EQ-OPERATOR] sev=high/high @L35 :: 使用 == / != 比较 String，应使用 .equals() (Stri
+
+[BUG-002] 命中 期望[MONEY-FLOAT-PRECISION]@PriceCalculator.java:36 (cross_fn=false)
+    实测[MONEY-FLOAT-PRECISION] sev=high/medium @L33 :: 金额/货币字段使用浮点类型存在精度风险 (Money stored as flo
+    实测[MONEY-FLOAT-PRECISION] sev=high/medium @L35 :: 金额/货币字段使用浮点类型存在精度风险 (Money stored as flo
+
+[BUG-003] 命中 期望[HTTP-NO-TIMEOUT]@ApiClient.java:34 (cross_fn=false)
+    实测[HTTP-NO-TIMEOUT] sev=medium/high @L31 :: HTTP 客户端调用未设置超时 (HTTP call without timeo
+
+[BUG-004] 命中 期望[HARDCODED-CREDENTIAL]@DatabaseConfig.java:11 (cross_fn=false)
+    实测[HARDCODED-PASSWORD] sev=critical/high @L16 :: 检测到硬编码凭据 (Hardcoded credential or secret
+
+[BUG-005] 命中 期望[STATIC-SIMPLEDATEFORMAT]@DateFormatter.java:10 (cross_fn=false)
+    实测[STATIC-SIMPLEDATEFORMAT] sev=high/high @L13 :: static SimpleDateFormat 字段非线程安全 (Shared 
+    实测[MISSING-TIMEZONE] sev=info/medium @L13 :: SimpleDateFormat 未显式设置时区 (SimpleDateForm
+
+[BUG-006] 漏报 期望[BUSY-WAIT]@EventListener.java:28 (cross_fn=false)
+    实测[BROAD-EXCEPT] sev=info/high @L50 :: 检测到过宽泛的异常捕获 (Broad exception catch)
+    实测[LOG-ONLY-EXCEPT] sev=info/high @L50 :: 异常处理仅记录日志后吞掉错误 (Log-only exception handl
+
+[BUG-007] 命中 期望[REDOS-RISK]@InputValidator.java:18 (cross_fn=false)
+    实测[REDOS-RISK] sev=high/medium @L14 :: 正则表达式存在 ReDoS 风险 (Regex with catastrophi
+
+[BUG-008] 漏报 期望[ALWAYS-TRUE-FALSE]@DiscountEngine.java:32 (cross_fn=false)
+    实测[MONEY-FLOAT-PRECISION] sev=high/medium @L25 :: 金额/货币字段使用浮点类型存在精度风险 (Money stored as flo
+    实测[MONEY-FLOAT-PRECISION] sev=high/medium @L50 :: 金额/货币字段使用浮点类型存在精度风险 (Money stored as flo
+    实测[MONEY-FLOAT-PRECISION] sev=high/medium @L64 :: 金额/货币字段使用浮点类型存在精度风险 (Money stored as flo
+
+[BUG-009] 命中 期望[SELF-ASSIGNMENT]@ConfigManager.java:33 (cross_fn=false)
+    实测[SELF-ASSIGNMENT] sev=medium/high @L28 :: 变量被赋值为自身，疑似复制粘贴错误 (Self assignment)
+    实测[INFINITE-RECURSION-RISK] sev=info/high @L67 :: 函数无条件调用自身，疑似无限递归 (Infinite recursion ris
+
+[BUG-010] 漏报 期望[COLLECTION-INDEX-OUT-OF-BOUNDS]@ListPaginator.java:30 (cross_fn=false)
+    (该文件无任何 finding)
+
+[BUG-011] 命中 期望[DIVISION-BY-ZERO-RISK]@StatsCalculator.java:22 (cross_fn=false)
+    实测[MONEY-FLOAT-PRECISION] sev=info/medium @L21 :: 金额/货币字段使用浮点类型存在精度风险 (Money stored as flo
+
+[BUG-012] 漏报 期望[EMPTY-EXCEPT]@LogParser.java:34 (cross_fn=false)
+    实测[STATIC-SIMPLEDATEFORMAT] sev=high/high @L15 :: static SimpleDateFormat 字段非线程安全 (Shared 
+    实测[MISSING-TIMEZONE] sev=info/medium @L16 :: SimpleDateFormat 未显式设置时区 (SimpleDateForm
+    实测[EMPTY-EXCEPT] sev=info/high @L50 :: 检测到空异常处理块 (Empty exception handler)
+    实测[BROAD-EXCEPT] sev=info/high @L55 :: 检测到过宽泛的异常捕获 (Broad exception catch)
+
+[BUG-013] 漏报 期望[SQL-INJECTION]@UserDao.java:22 (cross_fn=true)
+    实测[java.lang.security.audit.formatted-sql-string.formatted-sql-string] sev=high/medium @L35 :: [Semgrep] formatted-sql-string
+    实测[SQL-INJECTION-RISK] sev=critical/medium @L57 :: 潜在 SQL 注入风险 (Potential SQL injection)
+
+[BUG-014] 漏报 期望[NULL-PROP-UNCHECKED]@OrderService.java:18 (cross_fn=true)
+    (该文件无任何 finding)
+
+[BUG-015] 命中 期望[EXECUTOR-NOT-SHUTDOWN]@TaskExecutor.java:12 (cross_fn=true)
+    实测[EXECUTOR-NOT-SHUTDOWN] sev=info/medium @L13 :: ExecutorService/线程池创建后未 shutdown (Execut
+    实测[BROAD-EXCEPT] sev=info/high @L25 :: 检测到过宽泛的异常捕获 (Broad exception catch)
+    实测[BROAD-EXCEPT] sev=info/high @L43 :: 检测到过宽泛的异常捕获 (Broad exception catch)
+
+[BUG-016] 漏报 期望[INFINITE-LOOP-RISK]@CleanupService.java:35 (cross_fn=true)
+    (该文件无任何 finding)
+
+[BUG-017] 漏报 期望[BIZ-NO-TRANSACTION]@PaymentService.java:28 (cross_fn=true)
+    (该文件无任何 finding)
+
+[BUG-018] 漏报 期望[RESOURCE-LEAK]@FileExporter.java:25 (cross_fn=true)
+    实测[PATH-TRAVERSAL-RISK] sev=high/medium @L12 :: 潜在路径穿越风险 (Potential path traversal)
+
+[BUG-019] 漏报 期望[STATIC-MUTABLE-SHARED-STATE]@CounterService.java:9 (cross_fn=true)
+    (该文件无任何 finding)
+
+[BUG-020] 漏报 期望[IO-IN-LOCK]@CacheManager.java:30 (cross_fn=true)
+    (该文件无任何 finding)
+
+[BUG-021] 漏报 期望[EXCEPTION-SWALLOWED-NO-LOG]@EmailService.java:28 (cross_fn=true)
+    实测[BROAD-EXCEPT] sev=info/high @L18 :: 检测到过宽泛的异常捕获 (Broad exception catch)
+
+[BUG-022] 漏报 期望[RETRY-WITHOUT-BACKOFF]@RetryExecutor.java:35 (cross_fn=true)
+    实测[DEEP-NESTING] sev=info/high @L15 :: 函数 'RetryExecutor.executeWithRetry' 存在复杂
+    实测[BROAD-EXCEPT] sev=info/high @L22 :: 检测到过宽泛的异常捕获 (Broad exception catch)
+
+[BUG-023] 命中 期望[SQL-IN-LOOP]@ReportGenerator.java:24 (cross_fn=true)
+    实测[MONEY-FLOAT-PRECISION] sev=high/medium @L27 :: 金额/货币字段使用浮点类型存在精度风险 (Money stored as flo
+    实测[MONEY-FLOAT-PRECISION] sev=high/medium @L35 :: 金额/货币字段使用浮点类型存在精度风险 (Money stored as flo
+
+[BUG-024] 漏报 期望[BIZ-PARTIAL-FAILURE]@OrderFulfillService.java:35 (cross_fn=true)
+    (该文件无任何 finding)
+
+[BUG-025] 命中 期望[TAINT-CROSS-FUNCTION]@PdfRenderer.java:18 (cross_fn=true)
+    实测[NULL-PROP-UNCHECKED] sev=high/medium @L10 :: 跨函数空值传播 — 返回值可能为null但调用方未检查
+    实测[COMMAND-INJECTION-RISK] sev=critical/high @L12 :: 潜在命令注入风险 (Potential command injection)
+    实测[SQL-INJECTION-RISK] sev=info/medium @L12 :: 潜在 SQL 注入风险 (Potential SQL injection)
+    实测[MISSING-CHARSET] sev=info/medium @L19 :: 字符串/IO 操作未显式指定字符集 (Missing explicit char
+    实测[BROAD-EXCEPT] sev=info/high @L21 :: 检测到过宽泛的异常捕获 (Broad exception catch)
+    实测[SWALLOWED-EXCEPTION-FLOW] sev=info/medium @L21 :: 异常被记录后以默认控制流吞掉 (Swallowed exception flow
+
+[BUG-026] 漏报 期望[BLOCKING-CALL-IN-ASYNC]@AsyncTaskProcessor.java:22 (cross_fn=true)
+    (该文件无任何 finding)
+
+[BUG-027] 漏报 期望[EXCEPTION-LOST-CONTEXT]@MigrationService.java:42 (cross_fn=true)
+    (该文件无任何 finding)
+
+[BUG-028] 漏报 期望[LOCK-LEAKED-ON-CALLEE-THROW]@DistributedLockManager.java:25 (cross_fn=true)
+    (该文件无任何 finding)
+
+[BUG-029] 命中 期望[RESOURCE-CLOSE-NOT-GUARANTEED]@ConnectionManager.java:30 (cross_fn=true)
+    实测[RESOURCE-NEVER-CLOSED-XFUNC] sev=info/medium @L12 :: 跨函数资源泄漏 — 资源在函数中获取但无调用路径释放
+    实测[EMPTY-EXCEPT] sev=info/high @L29 :: 检测到空异常处理块 (Empty exception handler)
+    实测[EMPTY-EXCEPT] sev=info/high @L37 :: 检测到空异常处理块 (Empty exception handler)
+
+[BUG-030] 命中 期望[INTEGER-CACHE-PITFALL]@OrderCounter.java:26 (cross_fn=false)
+    实测[JAVA-INTEGER-BOXING-EQ] sev=high/medium @L26 :: Java 装箱类型用 == 比较 (引用比较)
+
+[BUG-031] 命中 期望[STATIC-SIMPLEDATEFORMAT]@LogParser.java:15 (cross_fn=false)
+    实测[STATIC-SIMPLEDATEFORMAT] sev=high/high @L15 :: static SimpleDateFormat 字段非线程安全 (Shared 
+    实测[MISSING-TIMEZONE] sev=info/medium @L16 :: SimpleDateFormat 未显式设置时区 (SimpleDateForm
+    实测[EMPTY-EXCEPT] sev=info/high @L50 :: 检测到空异常处理块 (Empty exception handler)
+    实测[BROAD-EXCEPT] sev=info/high @L55 :: 检测到过宽泛的异常捕获 (Broad exception catch)

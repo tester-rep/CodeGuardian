@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from codeguardian.models.enums import Severity
 
@@ -10,7 +10,8 @@ from codeguardian.models.enums import Severity
 class ScanConfig(BaseModel):
     """Scan behavior configuration."""
 
-    depth: str = "standard"  # quick / standard / deep
+    # Single AI switch (SSOT): ai_off disables AI entirely; standard/ultra pick depth.
+    review_mode: str = "standard"  # ai_off / standard / ultra
     languages: list[str] | None = None  # null = auto-detect
     dimensions: list[str] | None = None  # null = all
     exclude_paths: list[str] = Field(default_factory=list)  # user-defined path exclusions
@@ -44,7 +45,7 @@ class AIConfig(BaseModel):
     base_url: str | None = None  # Custom OpenAI-compatible endpoint; None = official OpenAI
     max_tokens: int = 2000
     temperature: float = 0.3
-    timeout: float = 300.0  # HTTP request timeout in seconds
+    timeout: float = 60.0  # HTTP request timeout in seconds
     # Client-side rate limit (TPS). Some API providers enforce per-account
     # request-per-second cap; if it's exceeded, every excess request gets a
     # 429 even when in-flight concurrency is 1. Set this to slightly below
@@ -59,10 +60,13 @@ class AIConfig(BaseModel):
 
 
 class DeepReviewConfig(BaseModel):
-    """AI deep review configuration."""
+    """AI deep review configuration.
 
-    enabled: bool = True
-    review_mode: str = "standard"  # standard | ultra
+    ``review_mode`` is derived from ``ScanConfig.review_mode`` (SSOT) and is not
+    meant to be set independently.
+    """
+
+    review_mode: str = "standard"  # standard | ultra (derived from scan.review_mode)
     max_tokens_per_scan: int = 500_000
     max_concurrent: int = 5
     confidence_threshold: int = 6
@@ -122,7 +126,7 @@ class AIVerifyConfig(BaseModel):
     max_concurrent: int = 5
     verify_model: str = ""  # empty = reuse ai.summary_model, then ai.model
     escalate_model: str = ""  # Pass 2 model; empty = reuse ai.heavy_model, then verify_model
-    drop_false_positives: bool = False
+    drop_false_positives: bool = True
 
 
 class FreeReviewConfig(BaseModel):
@@ -174,3 +178,28 @@ class AppConfig(BaseModel):
     gate: GateConfig = Field(default_factory=GateConfig)
     rules: RulesConfig = Field(default_factory=RulesConfig)
     semgrep: SemgrepConfig = Field(default_factory=SemgrepConfig)
+
+    @model_validator(mode="after")
+    def _post_init(self) -> "AppConfig":
+        self._derive_review_mode()
+        return self
+
+    def _derive_review_mode(self) -> None:
+        """SSOT: ``scan.review_mode`` drives ``ai.enabled`` and ``deep_review.review_mode``.
+
+        - ``ai_off``   -> AI disabled entirely.
+        - ``standard`` -> AI enabled, deep review single-pass.
+        - ``ultra``    -> AI enabled, deep review multi-pass.
+        """
+        rm = (self.scan.review_mode or "standard").strip().lower()
+        if rm not in ("ai_off", "standard", "ultra"):
+            rm = "standard"
+        self.scan.review_mode = rm
+        self.ai.enabled = rm != "ai_off"
+        if rm in ("standard", "ultra"):
+            self.deep_review.review_mode = rm
+
+    def apply_review_mode(self, mode: str) -> None:
+        """Override review_mode at runtime (e.g. from CLI) and re-derive dependents."""
+        self.scan.review_mode = (mode or "").strip().lower()
+        self._derive_review_mode()

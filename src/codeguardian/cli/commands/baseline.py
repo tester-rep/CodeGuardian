@@ -41,11 +41,10 @@ def baseline_command(
         "--latest",
         help="Use the latest saved snapshot instead of running a fresh scan",
     ),
-    depth: str | None = typer.Option(
+    review_mode: str | None = typer.Option(
         None,
-        "--depth",
-        "-d",
-        help="Analysis depth for a fresh baseline scan: quick / standard / deep",
+        "--review-mode",
+        help="AI review mode for a fresh baseline scan: ai_off / standard / ultra (default from config)",
     ),
     dimensions: str | None = typer.Option(
         None,
@@ -95,10 +94,20 @@ def baseline_command(
             )
             raise typer.Exit(code=1)
 
+        if review_mode is not None:
+            mode = review_mode.strip().lower()
+            if mode not in {"ai_off", "standard", "ultra"}:
+                console.print(
+                    f"[red]Invalid review mode:[/red] {review_mode}\n"
+                    "Valid options: ai_off, standard, ultra"
+                )
+                raise typer.Exit(code=1)
+            app_config.apply_review_mode(mode)
+
         request = ScanRequest(
             project_path=project_path,
             report_formats=[],
-            depth=depth.strip().lower() if depth is not None else app_config.scan.depth,
+            review_mode=app_config.scan.review_mode,
             dimensions=requested_dimensions,
             languages=[item.strip() for item in lang.split(",") if item.strip()] if lang else app_config.scan.languages,
         )
