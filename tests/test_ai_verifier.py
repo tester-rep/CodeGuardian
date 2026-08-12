@@ -285,6 +285,67 @@ async def test_malformed_response_treated_as_skipped_error(tmp_path):
     assert outcome.skipped_count == 1
 
 
+@pytest.mark.asyncio
+async def test_upstream_5xx_is_retried_then_succeeds(tmp_path, monkeypatch):
+    """A transient gateway 5xx must be retried (backoff), not silently dropped."""
+    import codeguardian.ai.verifier.verifier as verifier_mod
+
+    # Avoid real backoff delays in the test.
+    async def _no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(verifier_mod.asyncio, "sleep", _no_sleep)
+
+    _seed_source_file(tmp_path, "app/api.py", "\n".join(f"line{i}" for i in range(1, 30)))
+    provider = AsyncMock()
+    provider.generate_with_usage.side_effect = [
+        Exception("Server error '500 Internal Server Error' for url ..."),
+        GenerateResult(
+            text=json.dumps({"verdict": "true", "reason": "确认注入"}),
+            usage=TokenUsage(prompt_tokens=100, completion_tokens=20, total_tokens=120),
+        ),
+    ]
+    verifier = _make_verifier(tmp_path, provider=provider)
+
+    finding = _make_finding(severity=Severity.MEDIUM)
+    outcome = await verifier.verify([finding])
+
+    out = outcome.findings[0]
+    assert out.verification_status == "ai-verified-true"
+    assert outcome.confirmed_count == 1
+    # First call 500, second call succeeded → exactly two invocations.
+    assert provider.generate_with_usage.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_upstream_5xx_exhausts_retries_and_keeps_finding(tmp_path, monkeypatch):
+    """Persistent 5xx beyond MAX_RETRIES → verdict None → finding kept (skipped)."""
+    import codeguardian.ai.verifier.verifier as verifier_mod
+
+    async def _no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(verifier_mod.asyncio, "sleep", _no_sleep)
+
+    _seed_source_file(tmp_path, "app/api.py", "\n".join(f"line{i}" for i in range(1, 30)))
+    provider = AsyncMock()
+    provider.generate_with_usage.side_effect = Exception(
+        "Server error '503 Service Unavailable' for url ..."
+    )
+    verifier = _make_verifier(tmp_path, provider=provider)
+
+    finding = _make_finding(severity=Severity.MEDIUM)
+    outcome = await verifier.verify([finding])
+
+    out = outcome.findings[0]
+    # Finding preserved (not deleted / not flipped to FP).
+    assert out.severity == finding.severity
+    assert out.verification_status.startswith("ai-skipped-")
+    assert outcome.skipped_count == 1
+    # Initial attempt + MAX_RETRIES retries.
+    assert provider.generate_with_usage.await_count == verifier_mod.MAX_RETRIES + 1
+
+
 # ────────────────────────────────────────────────────────────────────
 # Call-graph: verify caller/callee snippets are surfaced for high severity
 # ────────────────────────────────────────────────────────────────────

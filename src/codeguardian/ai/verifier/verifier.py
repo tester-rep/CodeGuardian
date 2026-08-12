@@ -49,6 +49,15 @@ logger = logging.getLogger(__name__)
 MAX_RETRIES = 4
 _JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*\n?(.*?)```", re.DOTALL)
 
+# Matches HTTP 5xx status codes surfaced by httpx.HTTPStatusError messages,
+# e.g. "server error '500 internal server error'" or "status 503".
+_SERVER_ERROR_RE = re.compile(r"\b5\d\d\b")
+
+
+def _is_server_error(msg: str) -> bool:
+    """True when the (lower-cased) error message denotes an upstream 5xx."""
+    return "server error" in msg or bool(_SERVER_ERROR_RE.search(msg))
+
 # Severities that force Pass 2 even when Pass 1 was decisive.
 # Rationale: high/critical findings are too consequential to confirm based
 # on ±10 lines of context alone. The user's rule: "怀疑有问题的，必须提供
@@ -300,7 +309,18 @@ class AIVerifier:
                 pass_used=pass_used, finding_id=finding_id, attempt=attempt + 1,
             )
 
-        logger.exception("Verifier unexpected error for %s", finding_id)
+        # Transient upstream 5xx (gateway hiccup): retry with backoff.
+        if _is_server_error(msg):
+            if attempt >= MAX_RETRIES:
+                logger.warning("Verifier upstream 5xx beyond %d retries for %s", MAX_RETRIES, finding_id)
+                return None
+            await asyncio.sleep(min(2 ** attempt, 30))
+            return await self._call_pass(
+                provider=provider, prompt=prompt,
+                pass_used=pass_used, finding_id=finding_id, attempt=attempt + 1,
+            )
+
+        logger.warning("Verifier unexpected error for %s: %s", finding_id, exc)
         return None
 
     # ── Response parsing ────────────────────────────────────────────

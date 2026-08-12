@@ -45,7 +45,7 @@ class AIConfig(BaseModel):
     base_url: str | None = None  # Custom OpenAI-compatible endpoint; None = official OpenAI
     max_tokens: int = 2000
     temperature: float = 0.3
-    timeout: float = 60.0  # HTTP request timeout in seconds
+    timeout: float = 120.0  # HTTP request timeout in seconds
     # Client-side rate limit (TPS). Some API providers enforce per-account
     # request-per-second cap; if it's exceeded, every excess request gets a
     # 429 even when in-flight concurrency is 1. Set this to slightly below
