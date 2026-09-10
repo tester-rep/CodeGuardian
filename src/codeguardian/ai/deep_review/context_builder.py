@@ -62,8 +62,32 @@ class ContextPackBuilder:
         # Extra notes, e.g. scout suspicions for professional second review
         pack.notes.extend(self._extra_notes_by_file.get(chunk.file_path, [])[:8])
 
+        # Bodies of same-file functions actually called by this chunk
+        pack.callee_bodies = self._build_callee_bodies(chunk)
+
         return pack
 
+
+    def _build_callee_bodies(self, chunk: CodeChunk) -> list[str]:
+        """Include bodies of same-file functions called by this chunk.
+
+        Enables cross-function analysis (e.g. N+1 where a loop calls a getter
+        that internally loads from DB). Caps at 3 functions × 30 lines.
+        """
+        funcs = self._index.get_file_function_bodies(
+            chunk.file_path,
+            exclude_qualified_name=chunk.qualified_name,
+        )
+        sections: list[str] = []
+        for func in funcs:
+            if f"{func.name}(" not in chunk.source_code:
+                continue
+            body_lines = func.body.splitlines()
+            body = "\n".join(body_lines[:30])
+            sections.append(f"{func.signature}\n```{chunk.language}\n{body}\n```")
+            if len(sections) >= 3:
+                break
+        return sections
 
     def _build_local_findings_section(self, chunk: CodeChunk) -> str:
         """Summarize local engine findings that overlap with this chunk."""

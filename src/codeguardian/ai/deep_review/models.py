@@ -61,6 +61,7 @@ class ContextPack:
     local_findings_summary: str = ""
     custom_rules: str = ""
     notes: list[str] = field(default_factory=list)
+    callee_bodies: list[str] = field(default_factory=list)
 
     def build_dependency_section(self) -> str:
         """Format dependency signatures for prompt injection."""
@@ -73,6 +74,12 @@ class ContextPack:
         if not self.notes:
             return ""
         return "\n".join(self.notes)
+
+    def build_callee_bodies_section(self) -> str:
+        """Format called-function bodies for prompt injection."""
+        if not self.callee_bodies:
+            return ""
+        return "\n\n".join(self.callee_bodies)
 
 
 @dataclass(slots=True)

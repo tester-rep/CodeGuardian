@@ -435,8 +435,8 @@ A 7-step pipeline that performs LLM-powered code review:
 2. **Chunk** — Split source into reviewable units (file -> class -> function)
 3. **Filter** — Prioritize chunks by findings, recent changes, complexity
 4. **Budget** — Allocate token budget across chunks
-5. **Context** — Pack signatures, local findings, and custom rules
-6. **Review** — AI review with retry and concurrency control
+5. **Context** — Pack signatures, called-function bodies, local findings, and custom rules
+6. **Review** — Two-phase AI review (Scout first pass → Professional second pass) with retry and concurrency control
 7. **Merge** — Combine results into primary + supplementary findings
 
 **Ultra mode** (`--review-mode ultra`) for higher recall:

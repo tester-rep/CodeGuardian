@@ -120,7 +120,7 @@ class PCIBuilder:
         )
 
         # Step 7: Propagate summaries along call edges
-        self._propagate_summaries(summaries, call_graph)
+        self._propagate_summaries(summaries, call_graph, file_lines)
 
         total_time = time.monotonic() - start_time
 
@@ -599,6 +599,15 @@ class PCIBuilder:
                 target = symbol_table.lookup(method_qname)
                 if target:
                     return [(target.qualified_name, found_confidence)]
+                # Import qualified names may lack the module prefix used in
+                # symbol-table keys (e.g. com.app.dao.UserDAO vs
+                # service.src.main.java.com.app.dao.UserDAO). Fall back to a
+                # class-suffix match so the returned qname stays consistent
+                # with the symbol table — otherwise the reverse edge keys on a
+                # phantom short qname and callers_of() misses it.
+                target = self._lookup_method_by_class_suffix(imp.qualified_name, callee_name, symbol_table)
+                if target:
+                    return [(target.qualified_name, found_confidence)]
                 return [(method_qname, declared_confidence)]
 
         # Global type lookup
@@ -612,6 +621,29 @@ class PCIBuilder:
                         return [(m.qualified_name, global_confidence)]
 
         return []
+
+    def _lookup_method_by_class_suffix(
+        self,
+        class_qname: str,
+        callee_name: str,
+        symbol_table: SymbolTable,
+    ) -> Symbol | None:
+        """Resolve a method whose import qualified name lacks the module prefix.
+
+        Import qualified names (e.g. ``com.app.dao.UserDAO``) are shorter than
+        symbol-table keys (e.g. ``service.src.main.java.com.app.dao.UserDAO``).
+        Match any method symbol whose qualified_name ends with
+        ``<class_qname>.<callee_name>``. Returns None when ambiguous (multiple
+        classes share the same short class name).
+        """
+        suffix = f"{class_qname}.{callee_name}"
+        matches = [
+            sym for sym in symbol_table.lookup_by_name(callee_name)
+            if sym.qualified_name.endswith(suffix)
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        return None
 
     def _resolve_constructor_call(
         self,
@@ -748,15 +780,19 @@ class PCIBuilder:
         self,
         summaries: dict[str, FunctionSummary],
         call_graph: CallGraph,
+        file_lines: dict[str, list[str]],
     ) -> None:
-        """Propagate summaries along call edges (bounded fixpoint, max 3 passes).
+        """Propagate summaries along call edges (bounded fixpoint).
 
         Propagation rules:
-        - If callee may_return_null and caller uses its result → caller may_return_null
+        - If callee may_return_null (locally or transitively) AND the caller
+          returns/transmits the callee's result → caller transitively may_return_null
         - If callee may_throw(X) and caller doesn't catch X → caller may_throw(X)
         - If callee acquires resource → caller transitively acquires
         """
-        MAX_PASSES = 3
+        # Deep null propagation (d2-d4 chains) needs one pass per hop. Use a
+        # generous bound: fixpoint terminates early via `changed` when stable.
+        MAX_PASSES = 6
         changed = True
         pass_count = 0
 
@@ -780,12 +816,18 @@ class PCIBuilder:
                         summary.transitive_may_throw.update(new_throws)
                         changed = True
 
-                    # Propagate may_return_null (transitive)
-                    if callee_summary.may_return_null and not summary.transitive_may_return_null:
-                        # Only propagate if caller returns the callee's result
-                        # (Heuristic: if callee is in a return statement)
-                        summary.transitive_may_return_null = True
-                        changed = True
+                    # Propagate may_return_null (transitive) only when the caller
+                    # transmits the callee's result (returns it directly or via a
+                    # local variable). Unconditional propagation over-marks callers
+                    # that merely call a null-returning helper but return a
+                    # non-null wrapper (e.g. Result.ok(...)), producing false
+                    # positives. The callee's transitive flag must also be
+                    # considered, otherwise deep chains (d2-d4) break after the
+                    # first hop.
+                    if (callee_summary.may_return_null or callee_summary.transitive_may_return_null) and not summary.transitive_may_return_null:
+                        if self._caller_transmits_null(edge, summary, file_lines):
+                            summary.transitive_may_return_null = True
+                            changed = True
 
                     # Propagate resource acquisition
                     if (callee_summary.acquires or callee_summary.transitive_acquires_resource) and not summary.transitive_acquires_resource:
@@ -794,6 +836,48 @@ class PCIBuilder:
 
         if pass_count >= MAX_PASSES:
             logger.debug("PCI: Summary propagation hit max passes (%d)", MAX_PASSES)
+
+    @staticmethod
+    def _caller_transmits_null(
+        edge: CallEdge,
+        summary: FunctionSummary,
+        file_lines: dict[str, list[str]],
+    ) -> bool:
+        """Heuristic: does the caller return (transmit) the callee's result?
+
+        Null only propagates when the caller hands the callee's return value
+        back to *its own* caller — either ``return callee(...)`` directly, or a
+        local assignment ``T v = callee(...)`` followed by ``return v``. A caller
+        that merely invokes a null-returning helper but returns an unrelated
+        value (e.g. ``Result.ok(x)``) must NOT be marked transitive.
+        """
+        lines = file_lines.get(summary.file_path, [])
+        if not lines:
+            return False
+
+        idx = edge.call_site_line - 1
+        if idx < 0 or idx >= len(lines):
+            return False
+
+        callee_short = edge.callee.rsplit(".", 1)[-1]
+        line = lines[idx].strip()
+
+        # Direct transmission: `return callee(...)` or `return callee(...).x()`
+        if line.startswith("return") and callee_short in line:
+            return True
+
+        # Assignment-then-return: `T v = callee(...)` ... `return v;`
+        if callee_short in line and "=" in line:
+            lhs = line.split("=", 1)[0].strip()
+            # `Order order = ...` → variable name is the last token of the LHS.
+            var = lhs.split()[-1].rstrip(";").strip() if lhs.split() else ""
+            if var:
+                for following in lines[idx + 1:idx + 6]:
+                    stripped = following.strip()
+                    if stripped.startswith("return") and f" {var}" in stripped:
+                        return True
+
+        return False
 
 
 class PCIResult:

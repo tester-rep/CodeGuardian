@@ -18,13 +18,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class FunctionSignature:
-    """Lightweight function signature (no body)."""
+    """Lightweight function signature plus optional body for cross-function context."""
 
     name: str
     qualified_name: str
     file_path: str
     signature: str  # e.g. "def process_order(order_id: int, amount: float) -> bool"
     line_start: int = 0
+    body: str = ""  # function body source; empty if unavailable
 
 
 @dataclass(slots=True)
@@ -62,6 +63,7 @@ class ProjectIndex:
     def build_from_structures(
         self,
         structures: dict[str, ParsedStructure],
+        file_contents: dict[str, str] | None = None,
     ) -> None:
         """Build index from pre-parsed structures.
 
@@ -69,19 +71,28 @@ class ProjectIndex:
         ----------
         structures : dict[str, ParsedStructure]
             Mapping of relative file path → parsed structure.
+        file_contents : dict[str, str] | None
+            Mapping of relative file path → full source text, used to slice
+            function bodies for cross-function context. Optional.
         """
+        file_contents = file_contents or {}
         for file_path, structure in structures.items():
             func_names: list[str] = []
+            lines = (file_contents.get(file_path) or "").splitlines()
 
             for func in structure.functions:
                 qname = f"{file_path}:{func.class_or_module}.{func.name}" if func.class_or_module else f"{file_path}:{func.name}"
                 sig = func.signature or f"{func.name}()"
+                body = ""
+                if lines and func.start_line and func.end_line:
+                    body = "\n".join(lines[func.start_line - 1:func.end_line])
                 self._functions[qname] = FunctionSignature(
                     name=func.name,
                     qualified_name=qname,
                     file_path=file_path,
                     signature=sig,
                     line_start=func.start_line or 0,
+                    body=body,
                 )
                 func_names.append(qname)
 
@@ -110,6 +121,21 @@ class ProjectIndex:
         """Look up a function signature by qualified name."""
         func = self._functions.get(qualified_name)
         return func.signature if func else None
+
+    def get_file_function_bodies(
+        self,
+        file_path: str,
+        exclude_qualified_name: str = "",
+    ) -> list[FunctionSignature]:
+        """Return same-file functions with bodies, for cross-function context."""
+        result: list[FunctionSignature] = []
+        for qname in self._file_functions.get(file_path, []):
+            if qname == exclude_qualified_name:
+                continue
+            func = self._functions.get(qname)
+            if func and func.body:
+                result.append(func)
+        return result
 
     def get_class_info(self, file_path: str, class_name: str) -> ClassSignature | None:
         """Look up a class by file path and name."""

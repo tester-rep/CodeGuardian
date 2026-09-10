@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from codeguardian.core.call_graph.symbol_table import SymbolKind, Visibility
+
 if TYPE_CHECKING:
     from codeguardian.core.call_graph.function_summary import FunctionSummary
     from codeguardian.core.call_graph.graph import CallEdge, CallGraph
@@ -253,6 +255,10 @@ class ProcessDetector:
             sym = symbol_table.lookup(ep)
             if sym is None:
                 continue
+            # Constructors are never business entry points (dependency injection
+            # resolves them reflectively, so they show up with no callers).
+            if sym.kind == SymbolKind.CONSTRUCTOR:
+                continue
             # Only consider public functions with meaningful names
             if sym.visibility.value == "public" and not sym.name.startswith("_"):
                 # Must have at least 2 callees to be interesting
@@ -279,7 +285,7 @@ class ProcessDetector:
         if lang == "python":
             return self._classify_python_entry(context, sym.name)
         elif lang == "java":
-            return self._classify_java_entry(context, sym.name)
+            return self._classify_java_entry(context, sym)
         elif lang == "go":
             return self._classify_go_entry(context, sym.name)
 
@@ -302,7 +308,8 @@ class ProcessDetector:
             return EntryType.MAIN
         return None
 
-    def _classify_java_entry(self, context: str, func_name: str) -> EntryType | None:
+    def _classify_java_entry(self, context: str, sym: Symbol) -> EntryType | None:
+        func_name = sym.name
         for pattern in _JAVA_HTTP_PATTERNS:
             if pattern.search(context):
                 return EntryType.HTTP_HANDLER
@@ -314,7 +321,27 @@ class ProcessDetector:
                 return EntryType.SCHEDULED
         if func_name == "main":
             return EntryType.MAIN
-        return None
+        # Fallback: annotation-free Java codebases (benchmarks, plain services
+        # without Spring annotations). Treat public business methods on
+        # controller/service/facade classes as public API entry points so flow
+        # analysis still runs.
+        if sym.kind == SymbolKind.CONSTRUCTOR:
+            return None
+        if sym.visibility != Visibility.PUBLIC:
+            return None
+        class_lower = (sym.class_name or "").lower()
+        if not any(s in class_lower for s in ("controller", "service", "facade", "manager", "handler", "endpoint", "resource")):
+            return None
+        if self._is_accessor(func_name):
+            return None
+        return EntryType.PUBLIC_API
+
+    @staticmethod
+    def _is_accessor(name: str) -> bool:
+        """Exclude getters/setters/toString/hashCode/equals from entry points."""
+        if name in ("toString", "hashCode", "equals", "clone", "finalize"):
+            return True
+        return name.startswith("get") or name.startswith("set") or name.startswith("is")
 
     def _classify_go_entry(self, context: str, func_name: str) -> EntryType | None:
         # Go handlers are typically registered, not decorated

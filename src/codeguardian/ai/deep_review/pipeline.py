@@ -327,6 +327,7 @@ class DeepReviewPipeline:
         # Cache parsers by language to avoid re-creating
         parsers: dict[str, SourceParser] = {}
 
+        file_contents: dict[str, str] = {}
         for rel_path, language in file_language_map.items():
             abs_path = project_root / rel_path
             if not abs_path.is_file():
@@ -342,10 +343,11 @@ class DeepReviewPipeline:
                 structure = parser.parse_file(abs_path, project_root)
                 if structure and (structure.functions or structure.classes):
                     structures[rel_path] = structure
+                    file_contents[rel_path] = abs_path.read_text(encoding="utf-8", errors="replace")
             except Exception:
                 logger.debug("Failed to parse %s for index", rel_path, exc_info=True)
 
-        index.build_from_structures(structures)
+        index.build_from_structures(structures, file_contents)
         return index
 
     def _chunk_files(

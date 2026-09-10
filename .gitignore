@@ -126,4 +126,7 @@ yarn-error.log*
 *.rej
 .cache/
 
+# ---------- Local debug / eval scratch (repo-root underscore files) ----------
+/_*
+
 docs/

@@ -132,7 +132,7 @@ class AIVerifyConfig(BaseModel):
 class FreeReviewConfig(BaseModel):
     """Scout-phase AI review configuration (high-recall first pass)."""
 
-    enabled: bool = False
+    enabled: bool = True
     max_tokens_per_scan: int = 200_000
     max_concurrent: int = 3
     review_model: str = ""  # empty = reuse ai.model

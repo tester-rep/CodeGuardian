@@ -925,6 +925,621 @@ SWITCH_NO_DEFAULT = RuleSpec(
     reference_url="https://cwe.mitre.org/data/definitions/478.html",
 )
 
+LIKE_PATTERN_ESCAPE = RuleSpec(
+    rule_id="LIKE-PATTERN-ESCAPE",
+    title="SQL LIKE 通配符转义不完整 (Incomplete SQL LIKE wildcard escaping)",
+    category="defect",
+    severity=Severity.HIGH,
+    confidence=Confidence.HIGH,
+    fix_suggestion="同时转义 `%` 和 `_`（必要时还有 ESCAPE 字符本身），例如先 `replace(\"\\\\\", \"\\\\\\\\\")`，再 `replace(\"%\", \"\\\\%\")`，最后 `replace(\"_\", \"\\\\_\")`。",
+    risk_priority="must-fix",
+    tags=("defect", "security", "injection"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-89",),
+    description_zh="SQL LIKE 的转义函数只处理了 `%`（多字符通配），遗漏 `_`（单字符通配）。攻击者可借助 `_` 逐字符探测数据模式，绕过 LIKE 查询的意图过滤，属于变相 SQL 注入。",
+    reference_url="https://cwe.mitre.org/data/definitions/89.html",
+)
+
+UTF8_BYTE_TRUNCATE = RuleSpec(
+    rule_id="UTF8-BYTE-TRUNCATE",
+    title="按字节截断 UTF-8 字符串可能切碎多字节字符 (UTF-8 truncation may split multibyte chars)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="使用字符（code point）粒度截断，或在字节边界回退到完整字符：先解码后截断，或从截断点向前跳过不完整的 UTF-8 续字节（`b & 0xC0 == 0x80`）。",
+    risk_priority="should-fix",
+    tags=("defect", "encoding", "data-integrity"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-176",),
+    description_zh="`new String(bytes, 0, maxBytes, UTF_8)` 按字节数截断字符串。CJK 字符占 3 字节、Emoji 占 4 字节，从字节中间截断会产出损坏的 UTF-8 序列和乱码。",
+    reference_url="https://cwe.mitre.org/data/definitions/176.html",
+)
+
+INTEGER_DIVISION_PRECISION = RuleSpec(
+    rule_id="INTEGER-DIVISION-PRECISION",
+    title="整数除法截断导致时间/数量计算精度丢失 (Integer division truncates fractional results)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="改用 `Math.floorDiv` / `Math.ceilDiv`（显式表达取整方向），或使用浮点/`BigDecimal` 计算后再决定取整策略。",
+    risk_priority="should-fix",
+    tags=("defect", "precision", "data-integrity"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-682",),
+    description_zh="毫秒差除以 `24*60*60*1000` 等整数除法会直接截断小数部分，导致跨午夜/半天的日期差被算成 0 天，或数量换算丢失余数。",
+    reference_url="https://cwe.mitre.org/data/definitions/682.html",
+)
+
+INTEGER_MULT_OVERFLOW = RuleSpec(
+    rule_id="INTEGER-MULT-OVERFLOW",
+    title="整数乘法/加法可能溢出 (Integer arithmetic may overflow)",
+    category="defect",
+    severity=Severity.HIGH,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="使用 `Math.multiplyExact` / `Math.addExact`（溢出时抛异常），或改用 `long`/`BigInteger` 并在计算前校验值域。",
+    risk_priority="must-fix",
+    tags=("defect", "overflow", "data-integrity"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-190",),
+    description_zh="`page * size`、`total + amount` 这类 int 乘法/加法在值域未受控时可能溢出为负数，导致 SQL OFFSET 无效或风控阈值被绕过。",
+    reference_url="https://cwe.mitre.org/data/definitions/190.html",
+)
+
+EQUALS_INCOMPLETE_FIELDS = RuleSpec(
+    rule_id="EQUALS-INCOMPLETE-FIELDS",
+    title="equals() 未比较全部字段，违反对象相等契约 (equals() ignores some fields)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="equals() 应比较所有决定相等性的字段（或显式文档化排除原因），并与 hashCode() 保持一致。",
+    risk_priority="should-fix",
+    tags=("defect", "object-contract", "data-integrity"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-1077",),
+    description_zh="equals() 只比较了部分字段，忽略其它字段。不同对象可能被判为相等（如只比较金额不比较币种），导致 Map key 覆盖、集合去重错误、支付/退款计算串号。",
+    reference_url="https://cwe.mitre.org/data/definitions/1077.html",
+)
+
+RESULT_RETURN_NULL = RuleSpec(
+    rule_id="RESULT-RETURN-NULL",
+    title="Result 类型方法返回 null 而不是失败结果 (Result method returns null instead of failure)",
+    category="defect",
+    severity=Severity.HIGH,
+    confidence=Confidence.HIGH,
+    fix_suggestion="查找失败时返回 `Result.fail(code, msg)`，不要返回 null；调用方会直接对 null 调用 `.getData()`/`.isSuccess()` 触发 NPE。",
+    risk_priority="must-fix",
+    tags=("defect", "null-safety", "api-contract"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-476",),
+    description_zh="返回 `Result<T>` 的方法在失败路径 `return null`，破坏了 Result 封装契约。HTTP 序列化/调用方对 null 调用方法会 NPE，而非得到可处理的失败结果。",
+    reference_url="https://cwe.mitre.org/data/definitions/476.html",
+)
+
+NEGATIVE_QUANTITY_RETURN = RuleSpec(
+    rule_id="NEGATIVE-QUANTITY-RETURN",
+    title="库存/数量 getter 返回未防护的减法，可能产生负数 (unprotected subtraction may yield negative quantity)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="用 `Math.max(0, available - reserved - damaged)` 兜底，或在调用方校验非负；禁止让可售库存下溢为负数。",
+    risk_priority="should-fix",
+    tags=("defect", "data-integrity", "underflow"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-191",),
+    description_zh="`return available - reserved - damaged;` 无下溢防护。当 reserved+damaged 大于 available 时返回负数库存，下游可能据此超卖或写入脏数据。",
+    reference_url="https://cwe.mitre.org/data/definitions/191.html",
+)
+
+DIVISION_BY_COLLECTION_SIZE = RuleSpec(
+    rule_id="DIVISION-BY-COLLECTION-SIZE",
+    title="除以集合 size() 未防空集合，可能除零 (division by collection size without empty guard)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="在除法前检查 `if (list.isEmpty()) return 0;`（或默认值），避免空集合除以 0 产生 Infinity/NaN。",
+    risk_priority="should-fix",
+    tags=("defect", "data-integrity", "divide-by-zero"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-369",),
+    description_zh="`total / list.size()` 在集合为空时除以 0。对 double 除零不抛异常而是产生 Infinity/NaN，污染后续统计与展示。",
+    reference_url="https://cwe.mitre.org/data/definitions/369.html",
+)
+
+GROWTH_RATE_DIVIDE_BY_ZERO = RuleSpec(
+    rule_id="GROWTH-RATE-DIVIDE-BY-ZERO",
+    title="增长率/百分比计算除以参数未校验为 0 (growth/ratio calculation divides by unchecked parameter)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="在除法前校验分母 `if (previous == 0) return 0;`（或抛业务异常），避免除零产生 Infinity/NaN。",
+    risk_priority="should-fix",
+    tags=("defect", "data-integrity", "divide-by-zero"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-369",),
+    description_zh="`return (current - previous) / previous * 100.0;` 当 previous==0 时除零，double 下产生 Infinity/NaN，增长率展示与告警判定失真。",
+    reference_url="https://cwe.mitre.org/data/definitions/369.html",
+)
+
+INT_ACCUMULATE_LONG = RuleSpec(
+    rule_id="INT-ACCUMULATE-LONG",
+    title="int 变量累加 long 元素导致精度丢失/溢出 (int accumulator sums long values)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="累加器类型改为 `long`（或 `BigInteger`），避免把 long 元素隐式窄化为 int 造成截断与溢出。",
+    risk_priority="should-fix",
+    tags=("defect", "data-integrity", "precision"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-681",),
+    description_zh="`int total = 0; for (long a : amounts) total += a;` 把 long 元素累加到 int，超出 int 范围即溢出，且隐式窄化丢失高位，统计金额出错。",
+    reference_url="https://cwe.mitre.org/data/definitions/681.html",
+)
+
+CHAINED_GETTER_DEREF = RuleSpec(
+    rule_id="CHAINED-GETTER-DEREF",
+    title="链式 getter 直接解引用，可能 NPE (chained getter dereference without null check)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.LOW,
+    fix_suggestion="对可能返回 null 的 getter（如 findById/getUnitPrice/getBody）先判空，或使用 Optional；避免 `a.getX().getY()` 链式裸调用。",
+    risk_priority="should-fix",
+    tags=("defect", "null-safety"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-476",),
+    description_zh="`item.getUnitPrice().getAmountInCents()` 这类链式 getter 裸解引用：若中间 getter 返回 null（如商品无单价），立即 NPE。",
+    reference_url="https://cwe.mitre.org/data/definitions/476.html",
+)
+
+RESULT_OK_NULLABLE = RuleSpec(
+    rule_id="RESULT-OK-NULLABLE",
+    title="Result.ok() 包裹可能为 null 的值 (Result.ok() wraps a possibly-null value)",
+    category="defect",
+    severity=Severity.HIGH,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="findById 等未命中返回 null 时，应 `return Result.fail(...)`；只有确认非 null 才 `Result.ok(x)`，避免上层对 getData() 返回的 null 解引用。",
+    risk_priority="must-fix",
+    tags=("defect", "null-safety", "api-contract"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-476",),
+    description_zh="`fromDb = repository.findById(id); ... return Result.ok(fromDb);` 当缓存与 DB 均未命中时 fromDb 为 null，Result.ok 仍返回成功，上层 getData() 得 null 后 NPE。",
+    reference_url="https://cwe.mitre.org/data/definitions/476.html",
+)
+
+NULLABLE_VALUE_USE = RuleSpec(
+    rule_id="NULLABLE-VALUE-USE",
+    title="可能为 null 的值被直接拆箱/解引用，无判空 (nullable value used without null check)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="对包装类型（Long/Integer）或可能返回 null 的 getter 返回值，先判空再使用；拆箱前用 `x != null && x > N`。",
+    risk_priority="should-fix",
+    tags=("defect", "null-safety"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-476",),
+    description_zh="`Long age = ...; age > 30` 拆箱比较、或 `getBody().length()` 直接解引用，在值为 null 时抛出 NullPointerException。",
+    reference_url="https://cwe.mitre.org/data/definitions/476.html",
+)
+
+EMPTY_LOOP_BODY = RuleSpec(
+    rule_id="EMPTY-LOOP-BODY",
+    title="for/while 循环体为空，遍历结果被静默丢弃 (empty loop body discards iteration result)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.HIGH,
+    fix_suggestion="在循环体内处理遍历元素（如归还库存、累加、清理），或删除无意义空循环；禁止留空块。",
+    risk_priority="should-fix",
+    tags=("defect", "business-logic", "dead-code"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-561",),
+    description_zh="`for (Reservation r : expired) { }` 空循环体：遍历了过期记录却未做任何处理（如归还库存/清理），业务数据被静默丢弃。",
+    reference_url="https://cwe.mitre.org/data/definitions/561.html",
+)
+
+LOOP_ROW_DML = RuleSpec(
+    rule_id="LOOP-ROW-DML",
+    title="循环内逐条执行写操作（DELETE/UPDATE/INSERT），应批处理 (row-by-row DML in loop)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="将逐条 executeUpdate 合并为单条 `WHERE id IN (...)` 或 batch 提交，减少网络往返与部分失败风险。",
+    risk_priority="should-fix",
+    tags=("defect", "performance", "data-integrity"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-1049",),
+    description_zh="`for (id : ids) { executeUpdate(...) }` 循环内逐条写数据库：N 条记录产生 N 次网络往返，单条失败导致后续被跳过，且无事务原子性。",
+    reference_url="https://cwe.mitre.org/data/definitions/1049.html",
+)
+
+LOOP_NEW_THREAD = RuleSpec(
+    rule_id="LOOP-NEW-THREAD",
+    title="循环内为每个元素创建新线程，无线程池限制 (unbounded thread creation in loop)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="改用线程池（ExecutorService）或 CompletableFuture 并发执行，限制并发度；禁止循环内 new Thread().start()。",
+    risk_priority="should-fix",
+    tags=("defect", "performance", "resource-management"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-400",),
+    description_zh="`for (s : subscribers) { new Thread(...).start(); }` 循环内无界创建线程：爆发事件下创建数万线程耗尽系统资源。",
+    reference_url="https://cwe.mitre.org/data/definitions/400.html",
+)
+
+FACTORY_RETURN_NULL = RuleSpec(
+    rule_id="FACTORY-RETURN-NULL",
+    title="工厂/选择方法对未覆盖分支返回 null，调用方直接解引用 NPE (factory method returns null for unhandled branch)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="为未覆盖分支提供默认实现或显式抛异常（如 `throw new IllegalArgumentException`），禁止返回 null。",
+    risk_priority="should-fix",
+    tags=("defect", "null-safety", "api-contract"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-476",),
+    description_zh="`getCalculator(method)` 对未处理的枚举分支 `return null`，调用方未判空直接调用 → NullPointerException。",
+    reference_url="https://cwe.mitre.org/data/definitions/476.html",
+)
+
+N_PLUS_ONE_QUERY = RuleSpec(
+    rule_id="N-PLUS-ONE-QUERY",
+    title="先查主对象再循环逐条查询关联明细，N+1 查询问题 (N+1 query pattern)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="使用 JOIN 一次取出主从数据，或批量 `WHERE id IN (...)` 加载明细；避免循环内逐条查询。",
+    risk_priority="should-fix",
+    tags=("defect", "performance", "database"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-1049",),
+    description_zh="`findByIdWithItems()` 先查订单再查明细，或循环内 `findItemsByOrderId()` 逐条查询：N 个订单产生 N+1 次数据库查询。",
+    reference_url="https://cwe.mitre.org/data/definitions/1049.html",
+)
+
+NON_THREAD_SAFE_SUBSCRIBER_LIST = RuleSpec(
+    rule_id="NON-THREAD-SAFE-SUBSCRIBER-LIST",
+    title="订阅者/监听器列表用非线程安全 ArrayList，并发读写可能 CME (non-thread-safe subscriber list)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.LOW,
+    fix_suggestion="改用 CopyOnWriteArrayList 或 ConcurrentLinkedQueue，或在遍历/修改时加锁，避免 ConcurrentModificationException。",
+    risk_priority="should-fix",
+    tags=("defect", "concurrency"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-362",),
+    description_zh="订阅者列表使用 `new ArrayList<>()`，publish() 遍历时并发 subscribe() 触发 ConcurrentModificationException 导致事件丢失。",
+    reference_url="https://cwe.mitre.org/data/definitions/362.html",
+)
+
+NON_ATOMIC_FIELD_ACCUMULATE = RuleSpec(
+    rule_id="NON-ATOMIC-FIELD-ACCUMULATE",
+    title="并发环境下对 long/int 字段做非原子累加，可能丢失更新 (non-atomic field accumulation)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.LOW,
+    fix_suggestion="改用 AtomicLong/AtomicInteger 或 synchronized，或使用 LongAdder 累加，保证累加原子性。",
+    risk_priority="should-fix",
+    tags=("defect", "concurrency", "data-integrity"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-366",),
+    description_zh="`totalRevenueCents += amountCents` 非原子读-改-写：并发调用时部分累加被覆盖丢失，统计值偏低。",
+    reference_url="https://cwe.mitre.org/data/definitions/366.html",
+)
+
+FOR_UPDATE_NO_NOWAIT = RuleSpec(
+    rule_id="FOR-UPDATE-NO-NOWAIT",
+    title="SELECT ... FOR UPDATE 未指定 NOWAIT/SKIP LOCKED，可能无限等待锁 (pessimistic lock without NOWAIT/SKIP LOCKED)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="在 FOR UPDATE 后追加 NOWAIT 或 SKIP LOCKED，避免锁等待级联耗尽数据库连接池。",
+    risk_priority="should-fix",
+    tags=("defect", "concurrency", "database"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-833",),
+    description_zh="`SELECT ... FOR UPDATE` 未指定 NOWAIT/SKIP LOCKED，其他事务持锁时当前线程无限阻塞，锁链级联耗尽连接池。",
+    reference_url="https://cwe.mitre.org/data/definitions/833.html",
+)
+
+DEAD_LETTER_QUEUE_NEVER_CONSUMED = RuleSpec(
+    rule_id="DEAD-LETTER-QUEUE-NEVER-CONSUMED",
+    title="死信队列只写入不消费，内存持续增长 (dead letter queue written but never consumed)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="增加后台消费/重投机制（poll/remove/drainTo），或将死信持久化到外部存储；禁止只 add 不消费。",
+    risk_priority="should-fix",
+    tags=("defect", "resource-management", "reliability"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-400",),
+    description_zh="`deadLetterQueue` 仅被 add() 写入，从未 poll()/remove() 消费，队列无界增长导致内存泄漏，失败消息永久丢失。",
+    reference_url="https://cwe.mitre.org/data/definitions/400.html",
+)
+
+RECURSION_NO_BOUNDARY_GUARD = RuleSpec(
+    rule_id="RECURSION-NO-BOUNDARY-GUARD",
+    title="递归遍历缺少深度/环保护，深嵌套或环数据会栈溢出 (recursion without depth/cycle guard)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="增加深度上限检查（if (depth > MAX) return）或 visited 集合做环检测，避免无限递归/栈溢出。",
+    risk_priority="should-fix",
+    tags=("defect", "reliability", "recursion"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-674",),
+    description_zh="递归遍历（如 buildThread/getCategoryTree）只有 base case 而无深度上限或 visited 环检测，嵌套过深或数据成环时 StackOverflowError。",
+    reference_url="https://cwe.mitre.org/data/definitions/674.html",
+)
+
+PUBLISH_BEFORE_PERSIST = RuleSpec(
+    rule_id="PUBLISH-BEFORE-PERSIST",
+    title="事件在数据持久化前发布，保存失败时下游已收到虚假事件 (event published before persistence)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.LOW,
+    fix_suggestion="先 repository.save(...) 再 eventBus.publish(...)，或将发布放到事务提交后；禁止在持久化前发事件。",
+    risk_priority="should-fix",
+    tags=("defect", "data-integrity", "event-sourcing"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-662",),
+    description_zh="`eventBus.publish(...)` 出现在 `repository.save(...)` 之前：save 失败时下游消费者已基于未持久化的虚假事件行事。",
+    reference_url="https://cwe.mitre.org/data/definitions/662.html",
+)
+
+BATCH_FAILURE_SWALLOWED = RuleSpec(
+    rule_id="BATCH-FAILURE-SWALLOWED",
+    title="批处理循环中失败项被静默丢弃，无错误报告 (batch loop silently drops failed items)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="记录失败项详情（log/错误列表/计数），或聚合为错误返回；禁止 catch 里只递增计数不记录原因。",
+    risk_priority="should-fix",
+    tags=("defect", "business-logic", "observability"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-390",),
+    description_zh="批处理循环 catch 块只做 `failed++`，无日志、无错误详情，失败项被静默丢弃且不可追溯。",
+    reference_url="https://cwe.mitre.org/data/definitions/390.html",
+)
+
+CROSS_JOIN_SELF_ON = RuleSpec(
+    rule_id="CROSS-JOIN-SELF-ON",
+    title="JOIN 的 ON 条件为同表同字段恒真（如 pr.id=pr.id），退化为笛卡尔积 (self-referential join condition)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="修正 ON 条件为正确的关联字段（如 p.id = pr.product_id），仅在需要时才拼接 JOIN。",
+    risk_priority="should-fix",
+    tags=("defect", "performance", "database"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-1049",),
+    description_zh="`JOIN prices pr ON pr.id = pr.id` 恒真条件导致每行笛卡尔积，结果集爆炸式膨胀。",
+    reference_url="https://cwe.mitre.org/data/definitions/1049.html",
+)
+
+GETTER_SPAWNS_THREAD = RuleSpec(
+    rule_id="GETTER-SPAWNS-THREAD",
+    title="getter/查询方法每次调用都创建新线程，高并发下线程数无界 (getter spawns a thread per call)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="将清理/刷新任务交给后台调度线程（ScheduledExecutorService），不要在查询方法里 new Thread。",
+    risk_priority="should-fix",
+    tags=("defect", "performance", "resource-management"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-400",),
+    description_zh="`getStock()` 每次调用都触发 `new Thread()`：高并发查询下无界创建线程，耗尽系统资源。",
+    reference_url="https://cwe.mitre.org/data/definitions/400.html",
+)
+
+BROADCAST_ROW_SEND = RuleSpec(
+    rule_id="BROADCAST-ROW-SEND",
+    title="广播方法循环内逐条发送，无批处理/并发 (broadcast sends row-by-row in loop)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.LOW,
+    fix_suggestion="使用批量发送或线程池并发，避免百万级用户逐条发送导致数小时耗时与部分丢失。",
+    risk_priority="should-fix",
+    tags=("defect", "performance"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-1049",),
+    description_zh="`broadcast()` 循环内逐条 `send()`，百万用户场景下耗时数小时，中途失败时部分已发部分丢失。",
+    reference_url="https://cwe.mitre.org/data/definitions/1049.html",
+)
+
+CACHE_GET_OR_LOAD_NO_LOCK = RuleSpec(
+    rule_id="CACHE-GET-OR-LOAD-NO-LOCK",
+    title="缓存 getOrLoad 无击穿保护，热点 key 过期时并发穿透数据库 (cache getOrLoad without thundering-herd guard)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="使用 computeIfAbsent / 单飞（singleflight）/ 锁保护，避免并发请求同时执行 loader。",
+    risk_priority="should-fix",
+    tags=("defect", "concurrency", "performance"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-1049",),
+    description_zh="`getOrLoad()` 无锁/无 computeIfAbsent：热点 key 过期瞬间所有并发请求同时执行 loader，下游被打穿。",
+    reference_url="https://cwe.mitre.org/data/definitions/1049.html",
+)
+
+RATE_LIMIT_TOCTOU = RuleSpec(
+    rule_id="RATE-LIMIT-TOCTOU",
+    title="限流/计数检查非原子 check-then-act，并发下可绕过 (non-atomic check-then-decrement rate limit)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="使用 AtomicInteger.decrementAndGet 或 synchronized 保护检查与递减，保证原子性。",
+    risk_priority="should-fix",
+    tags=("defect", "concurrency", "rate-limiting"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-362",),
+    description_zh="`if (bucket.tokens > 0) { bucket.tokens--; }` 非原子 check-then-act：并发请求同时通过检查，限流被绕过。",
+    reference_url="https://cwe.mitre.org/data/definitions/362.html",
+)
+
+LOOP_LOCK_NO_SORT = RuleSpec(
+    rule_id="LOOP-LOCK-NO-SORT",
+    title="按参数顺序循环加锁且不排序，多线程相反顺序会导致死锁 (locks acquired in loop without ordering)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="加锁前按 ID 排序（如 Collections.sort + 一致顺序），保证所有线程以相同顺序获取锁。",
+    risk_priority="should-fix",
+    tags=("defect", "concurrency", "deadlock"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-833",),
+    description_zh="`for (p : payments) { lock(p.getId()); }` 按参数顺序加锁不排序：两个线程以相反顺序传入时发生 ABBA 死锁。",
+    reference_url="https://cwe.mitre.org/data/definitions/833.html",
+)
+
+CACHE_NO_CLEANUP = RuleSpec(
+    rule_id="CACHE-NO-CLEANUP",
+    title="带 TTL 的缓存无后台清理线程，过期条目永久驻留内存 (TTL cache without eviction thread)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.LOW,
+    fix_suggestion="增加 ScheduledExecutorService 定期清理过期条目，或使用有界缓存（如 Caffeine maximumSize）。",
+    risk_priority="should-fix",
+    tags=("defect", "performance", "resource-management"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-400",),
+    description_zh="缓存条目带 expireAt TTL 但类内无清理线程，过期条目在下次访问前永久驻留，内存无界增长。",
+    reference_url="https://cwe.mitre.org/data/definitions/400.html",
+)
+
+WINDOW_FLUSH_DOUBLE_COUNT = RuleSpec(
+    rule_id="WINDOW-FLUSH-DOUBLE-COUNT",
+    title="并发 map 窗口 flush 的 remove-then-read 非原子，flush 后条目被并发写重建导致二次计数 (non-atomic remove-then-read window flush)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="用 compute(key, ...) 原子地取出并清除窗口条目，或对 flush 与写入路径加同一把锁，保证 remove 与后续聚合读之间无并发插入。",
+    risk_priority="should-fix",
+    tags=("defect", "concurrency", "data-integrity"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-362",),
+    description_zh="ConcurrentHashMap 上先 remove(key) 再读取聚合值，并发 computeIfAbsent(key).add() 会在 remove 后重建条目，已 flush 的数据被二次计入。",
+    reference_url="https://cwe.mitre.org/data/definitions/362.html",
+)
+
+ASSIGNMENT_IN_CONDITION = RuleSpec(
+    rule_id="ASSIGNMENT-IN-CONDITION",
+    title="布尔条件中使用赋值(=)而非比较(==)，条件恒为赋值结果的真值 (assignment used as boolean condition)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="将赋值 = 改为比较 ==（对象用 .equals()），或先赋值再单独判断。",
+    risk_priority="should-fix",
+    tags=("defect", "business-logic", "security"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-481",),
+    description_zh="return (this.role = r) != null 这类写法把 = 当作 ==，条件实际比较的是赋值操作的返回值，逻辑与预期相反。",
+    reference_url="https://cwe.mitre.org/data/definitions/481.html",
+)
+
+CONSTANT_RETURN_IN_GUARD = RuleSpec(
+    rule_id="CONSTANT-RETURN-IN-GUARD",
+    title="判断/守卫方法恒返回常量，短路了后续校验逻辑 (guard method always returns a constant)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="实现真实的判断逻辑，或删除该空实现并让调用方直接走真实校验路径。",
+    risk_priority="should-fix",
+    tags=("defect", "business-logic", "security"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-697",),
+    description_zh="isXxx/hasXxx/canXxx 等方法体只有一行 return false/true，使上游条件判断永远走固定分支，形成安全或业务短路。",
+    reference_url="https://cwe.mitre.org/data/definitions/697.html",
+)
+
+INSECURE_STRING_HASH = RuleSpec(
+    rule_id="INSECURE-STRING-HASH",
+    title="安全上下文使用 String.hashCode() 作为哈希/令牌摘要 (String.hashCode used in security context)",
+    category="security",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="改用 MessageDigest（SHA-256）或 HMAC 等密码学哈希，String.hashCode 碰撞率高且可预测。",
+    risk_priority="should-fix",
+    tags=("security", "crypto"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-327", "CWE-328"),
+    description_zh="hash/token/digest 类方法直接返回 .hashCode() 的十六进制形式，作为会话令牌或摘要时碰撞率高，可被预测。",
+    reference_url="https://cwe.mitre.org/data/definitions/328.html",
+)
+
+PAGINATION_INTEGER_DIVISION = RuleSpec(
+    rule_id="PAGINATION-INTEGER-DIVISION",
+    title="分页总页数用整数除法，未向上取整导致末页丢失 (total-pages integer division without ceil)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="改用 (total + size - 1) / size 向上取整，或使用 Math.ceil。",
+    risk_priority="should-fix",
+    tags=("defect", "business-logic", "data-integrity"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-682",),
+    description_zh="getTotalPages/pageCount 等方法直接 return total / size，余数被截断，最后一页数据无法访问。",
+    reference_url="https://cwe.mitre.org/data/definitions/682.html",
+)
+
+NULL_BRANCH_RETURN_OK = RuleSpec(
+    rule_id="NULL-BRANCH-RETURN-OK",
+    title="判空分支仍返回 Result.ok(null)，把失败当成功 (null branch returns Result.ok)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="null 分支应返回 Result.fail(...)（或 Result.error），而不是 Result.ok(null)。",
+    risk_priority="should-fix",
+    tags=("defect", "null-safety", "business-logic"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-476",),
+    description_zh="if (x == null) return Result.ok(x) 把空值包装成成功结果，调用方拿到 ok(null) 后解包即 NPE 或误判成功。",
+    reference_url="https://cwe.mitre.org/data/definitions/476.html",
+)
+
+SAFE_METHOD_RETURNS_NULLABLE = RuleSpec(
+    rule_id="SAFE-METHOD-RETURNS-NULLABLE",
+    title="命名 Safe 的方法直接透传可空查询结果，违背非空承诺 (safe method returns nullable)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="在方法内判空并返回空对象/Result.fail，或改名为 getXxxOrNull 明确可空语义。",
+    risk_priority="should-fix",
+    tags=("defect", "null-safety"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-476",),
+    description_zh="getXxxSafe 等方法体只有一行 return repository.find/get(...)，把可能为 null 的结果直接返回给调用方。",
+    reference_url="https://cwe.mitre.org/data/definitions/476.html",
+)
+
+CSV_INJECTION = RuleSpec(
+    rule_id="CSV-INJECTION",
+    title="CSV 导出直接拼接用户字段未转义，可注入公式 (CSV injection)",
+    category="security",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="对以 =+-@ 开头的字段加单引号前缀，并对逗号/引号/换行做转义。",
+    risk_priority="should-fix",
+    tags=("security", "injection"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-1236",),
+    description_zh="exportXxxCsv 方法用 StringBuilder.append(getXxx()) 直接拼接用户字段，字段若以 =、+、-、@ 开头会在 Excel 中执行公式。",
+    reference_url="https://cwe.mitre.org/data/definitions/1236.html",
+)
+
+QUANTITY_ADD_OVERFLOW = RuleSpec(
+    rule_id="QUANTITY-ADD-OVERFLOW",
+    title="库存数量字段累加未做溢出/上限校验 (quantity add overflow)",
+    category="defect",
+    severity=Severity.MEDIUM,
+    confidence=Confidence.MEDIUM,
+    fix_suggestion="使用 Math.addExact 或校验 availableQuantity <= Integer.MAX_VALUE - quantity。",
+    risk_priority="should-fix",
+    tags=("defect", "numeric"),
+    applicable_languages=("java",),
+    cwe_ids=("CWE-190",),
+    description_zh="setXxxQuantity(getXxxQuantity() + n) 直接累加 int 数量，n 过大或库存接近上限时溢出为负。",
+    reference_url="https://cwe.mitre.org/data/definitions/190.html",
+)
+
 
 DEFECT_RULES = register_rules(
 
@@ -992,6 +1607,47 @@ DEFECT_RULES = register_rules(
         MISSING_CHARSET,
         MISSING_TIMEZONE,
         SWITCH_NO_DEFAULT,
+        LIKE_PATTERN_ESCAPE,
+        UTF8_BYTE_TRUNCATE,
+        INTEGER_DIVISION_PRECISION,
+        INTEGER_MULT_OVERFLOW,
+        EQUALS_INCOMPLETE_FIELDS,
+        RESULT_RETURN_NULL,
+        NEGATIVE_QUANTITY_RETURN,
+        DIVISION_BY_COLLECTION_SIZE,
+        GROWTH_RATE_DIVIDE_BY_ZERO,
+        INT_ACCUMULATE_LONG,
+        CHAINED_GETTER_DEREF,
+        RESULT_OK_NULLABLE,
+        NULLABLE_VALUE_USE,
+        EMPTY_LOOP_BODY,
+        LOOP_ROW_DML,
+        LOOP_NEW_THREAD,
+        FACTORY_RETURN_NULL,
+        N_PLUS_ONE_QUERY,
+        NON_THREAD_SAFE_SUBSCRIBER_LIST,
+        NON_ATOMIC_FIELD_ACCUMULATE,
+        FOR_UPDATE_NO_NOWAIT,
+        DEAD_LETTER_QUEUE_NEVER_CONSUMED,
+        RECURSION_NO_BOUNDARY_GUARD,
+        PUBLISH_BEFORE_PERSIST,
+        BATCH_FAILURE_SWALLOWED,
+        CROSS_JOIN_SELF_ON,
+        GETTER_SPAWNS_THREAD,
+        BROADCAST_ROW_SEND,
+        CACHE_GET_OR_LOAD_NO_LOCK,
+        RATE_LIMIT_TOCTOU,
+        LOOP_LOCK_NO_SORT,
+        CACHE_NO_CLEANUP,
+        WINDOW_FLUSH_DOUBLE_COUNT,
+        ASSIGNMENT_IN_CONDITION,
+        CONSTANT_RETURN_IN_GUARD,
+        INSECURE_STRING_HASH,
+        PAGINATION_INTEGER_DIVISION,
+        NULL_BRANCH_RETURN_OK,
+        SAFE_METHOD_RETURNS_NULLABLE,
+        CSV_INJECTION,
+        QUANTITY_ADD_OVERFLOW,
     ),
 )
 
@@ -1320,6 +1976,1160 @@ class DefectEngine:
 
 
 
+
+    # AST-based: Java SQL LIKE 通配符转义不完整（只转义 % 未转义 _）。
+    @classmethod
+    def _scan_java_like_pattern_escape(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            name_node = node.child_by_field_name("name")
+            if name_node is None:
+                continue
+            name = document.text_for(name_node)
+            if not re.search(r"escape|like|sanitize|search", name, re.IGNORECASE):
+                continue
+            text = document.text_for(node)
+            if not re.search(r"\.replace\s*\(\s*\"%\"", text):
+                continue
+            if re.search(r"\.replace\s*\(\s*\"_\"", text):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    rule=LIKE_PATTERN_ESCAPE,
+                    file_path=document.relative_path,
+                    line_start=line_start,
+                    line_end=line_end,
+                    language=language,
+                    message=f"{name}() 只转义了 '%'，未转义 SQL LIKE 单字符通配符 '_'。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 按字节截断 UTF-8 字符串可能切碎多字节字符。
+    @classmethod
+    def _scan_java_utf8_byte_truncate(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type not in {"method_declaration", "constructor_declaration"}:
+                continue
+            text = document.text_for(node)
+            if not re.search(r"new\s+String\s*\([^)]*,\s*0\s*,\s*\w+\s*,\s*(?:java\.nio\.charset\.)?StandardCharsets\.UTF_8\s*\)", text):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    rule=UTF8_BYTE_TRUNCATE,
+                    file_path=document.relative_path,
+                    line_start=line_start,
+                    line_end=line_end,
+                    language=language,
+                    message="按字节数截断 UTF-8 字符串（new String(bytes, 0, maxBytes, UTF_8)）可能切碎多字节字符。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 整数除法截断（毫秒/天数换算等）。
+    @classmethod
+    def _scan_java_integer_division_precision(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            text = document.text_for(node)
+            is_int_div = bool(re.search(r"/\s*\(?\s*(?:24\s*\*\s*60\s*\*\s*60\s*\*\s*1000|1000\s*\*\s*60\s*\*\s*60\s*\*\s*24|86400000|86400_000)\s*\)?", text))
+            if not is_int_div:
+                # 字符串长度/集合大小除以固定整数（段数、页数换算应向上取整）。
+                is_int_div = bool(re.search(r"\.(?:length|size)\s*\(\s*\)\s*/\s*\d+", text))
+            if not is_int_div:
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    rule=INTEGER_DIVISION_PRECISION,
+                    file_path=document.relative_path,
+                    line_start=line_start,
+                    line_end=line_end,
+                    language=language,
+                    message="整数除法会截断小数部分，时间/数量/段数换算可能丢失精度（建议向上取整）。",
+                )
+            )
+        return hits
+
+    # AST-based: Java int 乘法/加法溢出（return a * b; 无 multiplyExact 保护）。
+    @classmethod
+    def _scan_java_integer_mult_overflow(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            text = document.text_for(node)
+            if "multiplyExact" in text or "addExact" in text:
+                continue
+            is_overflow = False
+            # int x = a + b; / int x = a * b;（两个整型标识符相加/乘，可能溢出）
+            if re.search(r"\bint\s+\w+\s*=\s*\w+\s*[+*]\s*\w+\s*;", text):
+                is_overflow = True
+            # return a * b; / return a + b;，且方法返回类型为 int/long
+            elif (re.search(r"return\s+\w+\s*[*+]\s*\w+\s*;", text)
+                  and re.search(r"\b(?:int|long)\s+\w+\s*\(", text)):
+                is_overflow = True
+            if not is_overflow:
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    rule=INTEGER_MULT_OVERFLOW,
+                    file_path=document.relative_path,
+                    line_start=line_start,
+                    line_end=line_end,
+                    language=language,
+                    message="整数算术运算未做溢出保护（建议使用 Math.multiplyExact/addExact 或改用 long/BigInteger）。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 金额计算方法中使用 float 字面量/常量参与算术（精度风险）。
+    @classmethod
+    def _scan_java_float_money_calc(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            name_node = node.child_by_field_name("name")
+            if name_node is None:
+                continue
+            name = document.text_for(name_node)
+            if not re.search(r"fee|amount|price|money|refund|payment|balance|cost|rate|percentage|percent|cent|cash", name, re.IGNORECASE):
+                continue
+            text = document.text_for(node)
+            flagged = bool(re.search(r"\d+\.\d+f\b", text))
+            if not flagged:
+                flagged = bool(re.search(r"\(\s*(?:long|int)\s*\)\s*\([^)]*\d+\.\d+[^)]*\)", text))
+            if not flagged:
+                for cname in cls._collect_java_float_constants(node, document):
+                    if re.search(r"[*/+]\s*" + re.escape(cname) + r"\b", text):
+                        flagged = True
+                        break
+            if not flagged:
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    rule=MONEY_FLOAT_PRECISION,
+                    file_path=document.relative_path,
+                    line_start=line_start,
+                    line_end=line_end,
+                    language=language,
+                    message=f"{name}() 使用 float 参与金额计算，存在精度风险，应改用 BigDecimal 或定点整数（cent）。",
+                )
+            )
+        return hits
+
+    @classmethod
+    def _collect_java_float_constants(
+        cls, method_node: Node, document: TreeSitterDocument,
+    ) -> set[str]:
+        """收集方法所属类中声明为 float 类型的大写常量字段名（如 WALLET_FEE_RATE）。"""
+        names: set[str] = set()
+        cur = method_node.parent
+        while cur is not None:
+            if cur.type in {"class_declaration", "interface_declaration", "enum_declaration"}:
+                body = cur.child_by_field_name("body")
+                if body is not None:
+                    for child in cls._walk_nodes(body):
+                        if child.type != "field_declaration":
+                            continue
+                        ftext = document.text_for(child)
+                        if re.search(r"\bfloat\b", ftext):
+                            for m in re.finditer(r"\b([A-Z][A-Z0-9_]*)\b", ftext):
+                                names.add(m.group(1))
+                break
+            cur = cur.parent
+        return names
+
+    # AST-based: Java equals() 未比较全部实例字段。
+    @classmethod
+    def _scan_java_equals_incomplete_fields(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "class_declaration":
+                continue
+            body = node.child_by_field_name("body")
+            if body is None:
+                continue
+            fields: set[str] = set()
+            for child in body.named_children:
+                if child.type != "field_declaration":
+                    continue
+                if "static" in document.text_for(child):
+                    continue
+                for vd in child.named_children:
+                    if vd.type == "variable_declarator":
+                        name_node = vd.child_by_field_name("name")
+                        if name_node is not None:
+                            fields.add(document.text_for(name_node).strip())
+            if len(fields) < 2:
+                continue
+            for member in body.named_children:
+                if member.type != "method_declaration":
+                    continue
+                name_node = member.child_by_field_name("name")
+                params_node = member.child_by_field_name("parameters")
+                if name_node is None or params_node is None:
+                    continue
+                if document.text_for(name_node).strip() != "equals":
+                    continue
+                if not re.match(r"\(\s*Object\s+\w+\s*\)", document.text_for(params_node).strip()):
+                    continue
+                mtext = document.text_for(member)
+                referenced = {f for f in fields if re.search(r"\b" + re.escape(f) + r"\b", mtext)}
+                if len(referenced) >= len(fields):
+                    continue
+                line_start, line_end = document.line_range(member)
+                class_name_node = node.child_by_field_name("name")
+                class_name = document.text_for(class_name_node).strip() if class_name_node else "<anon>"
+                missing = sorted(fields - referenced)
+                hits.append(
+                    RuleHit(
+                        EQUALS_INCOMPLETE_FIELDS,
+                        document.relative_path,
+                        line_start,
+                        line_end,
+                        language=language,
+                        message=f"{class_name}.equals() 未比较字段 {missing}，可能将不同对象判为相等。",
+                    )
+                )
+        return hits
+
+    # AST-based: Java Result<T> 方法返回 null。
+    @classmethod
+    def _scan_java_result_return_null(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            text = document.text_for(node)
+            if not re.search(r"Result\s*<", text):
+                continue
+            if not re.search(r"return\s+null\s*;", text):
+                continue
+            name_node = node.child_by_field_name("name")
+            name = document.text_for(name_node).strip() if name_node else "<anon>"
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    RESULT_RETURN_NULL,
+                    document.relative_path,
+                    line_start,
+                    line_end,
+                    language=language,
+                    message=f"{name}() 返回 Result<T> 却在失败路径 return null，应返回 Result.fail(...)。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 库存/数量 getter 返回未防护减法（可能负数）。
+    @classmethod
+    def _scan_java_negative_quantity_return(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            name_node = node.child_by_field_name("name")
+            if name_node is None:
+                continue
+            name = document.text_for(name_node).strip()
+            if not re.search(r"sellable|available|net|stock|quantity|inventory|remaining", name, re.IGNORECASE):
+                continue
+            text = document.text_for(node)
+            if "Math.max" in text:
+                continue
+            if not re.search(r"return\s+\w+(?:\s*\([^)]*\))?\s*-\s*\w+(?:\s*\([^)]*\))?(?:\s*-\s*\w+(?:\s*\([^)]*\))?)*\s*;", text):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    NEGATIVE_QUANTITY_RETURN,
+                    document.relative_path,
+                    line_start,
+                    line_end,
+                    language=language,
+                    message=f"{name}() 返回未防护的减法（可能下溢为负数），建议 Math.max(0, ...) 兜底。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 除以集合 size() 未防空集合。
+    @classmethod
+    def _scan_java_division_by_collection_size(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            text = document.text_for(node)
+            if not re.search(r"/\s*\w+\s*\.\s*size\s*\(\s*\)", text):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    DIVISION_BY_COLLECTION_SIZE,
+                    document.relative_path,
+                    line_start,
+                    line_end,
+                    language=language,
+                    message="除以集合 size() 未防空集合，size()==0 时产生除零（double 下为 Infinity/NaN）。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 增长率/百分比计算除以参数未校验 0。
+    @classmethod
+    def _scan_java_growth_rate_divide_by_zero(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            name_node = node.child_by_field_name("name")
+            if name_node is None:
+                continue
+            name = document.text_for(name_node).strip()
+            if not re.search(r"rate|growth|ratio|percent|percentage", name, re.IGNORECASE):
+                continue
+            text = document.text_for(node)
+            if not re.search(r"return\s+[^;]*/\s*\w+[^;]*;", text):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    GROWTH_RATE_DIVIDE_BY_ZERO,
+                    document.relative_path,
+                    line_start,
+                    line_end,
+                    language=language,
+                    message=f"{name}() 除以参数未校验为 0，previous/分母为 0 时产生 Infinity/NaN。",
+                )
+            )
+        return hits
+
+    # AST-based: Java int 累加器累加 long 元素（精度丢失/溢出）。
+    @classmethod
+    def _scan_java_int_accumulate_long(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            text = document.text_for(node)
+            m = re.search(r"\bint\s+(\w+)\s*=\s*0\s*;", text)
+            if not m:
+                continue
+            var = m.group(1)
+            if not re.search(r"for\s*\(\s*long\s+\w+\s*:", text):
+                continue
+            if not re.search(r"\b" + re.escape(var) + r"\s*\+=", text):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    INT_ACCUMULATE_LONG,
+                    document.relative_path,
+                    line_start,
+                    line_end,
+                    language=language,
+                    message=f"int 累加器 `{var}` 累加 long 元素，存在精度丢失/溢出风险，应改为 long 类型。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 链式 getter 直接解引用（可能 NPE）。
+    @classmethod
+    def _scan_java_chained_getter_deref(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            text = document.text_for(node)
+            _jdk_getter = r"(?:getClass|getEncoder|getUrlEncoder|getDecoder|getUrlDecoder|getDeclared\w+|getConstructors?|getMethods?|getFields?|getInstance)"
+            if not re.search(r"\.(?!" + _jdk_getter + r"\b)(?:get|find|fetch|query|load)\w+\(\)\s*\.\s*\w+\s*\(?", text):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    CHAINED_GETTER_DEREF,
+                    document.relative_path,
+                    line_start,
+                    line_end,
+                    language=language,
+                    message="链式 getter 直接解引用（a.getX().getY()），中间结果可能为 null，建议判空或使用 Optional。",
+                )
+            )
+        return hits
+
+    # AST-based: Java Result.ok() 包裹可能为 null 的值。
+    @classmethod
+    def _scan_java_result_ok_nullable(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            text = document.text_for(node)
+            for m in re.finditer(r"Result\s*\.\s*ok\s*\(\s*(\w+)\s*\)", text):
+                var = m.group(1)
+                if not re.search(r"\b" + re.escape(var) + r"\s*=\s*\w+\.(?:findById|findBy|findOne|find|query|load|get)\w*\(", text):
+                    continue
+                # 存在 var == null 的失败处理分支则视为已处理。
+                if re.search(r"\b" + re.escape(var) + r"\s*==\s*null", text):
+                    continue
+                line_start, line_end = document.line_range(node)
+                hits.append(
+                    RuleHit(
+                        RESULT_OK_NULLABLE,
+                        document.relative_path,
+                        line_start,
+                        line_end,
+                        language=language,
+                        message=f"Result.ok({var}) 包裹了可能为 null 的值，未命中时应返回 Result.fail(...)。",
+                    )
+                )
+                break
+        return hits
+
+    # AST-based: Java 可能为 null 的值被直接拆箱/解引用。
+    @classmethod
+    def _scan_java_nullable_value_use(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            text = document.text_for(node)
+            flagged = False
+            # 模式1: 包装类型参数拆箱比较（Long x; ... x > N）
+            for m in re.finditer(r"\b(?:Long|Integer|Double|Float|Short|Byte)\s+(\w+)\s*[,)]", text):
+                var = m.group(1)
+                if re.search(r"\b" + re.escape(var) + r"\s*[<>]=?\s*-?\d+", text):
+                    if not re.search(r"\b" + re.escape(var) + r"\s*[!=]=\s*null", text):
+                        flagged = True
+                        break
+            # 模式2: String var = obj.getter(); 后 var.length() 无判空
+            if not flagged:
+                for m in re.finditer(r"\bString\s+(\w+)\s*=\s*\w+\.\w+\(\)\s*;", text):
+                    var = m.group(1)
+                    if re.search(r"\b" + re.escape(var) + r"\s*\.\s*length\s*\(\s*\)", text):
+                        if not re.search(r"\b" + re.escape(var) + r"\s*[!=]=\s*null", text):
+                            flagged = True
+                            break
+            if not flagged:
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    NULLABLE_VALUE_USE,
+                    document.relative_path,
+                    line_start,
+                    line_end,
+                    language=language,
+                    message="可能为 null 的值被直接拆箱/解引用，无判空，可能 NPE。",
+                )
+            )
+        return hits
+
+    @staticmethod
+    def _java_enclosing_method(node: Node) -> Node | None:
+        cur = node
+        while cur is not None and cur.type not in {"method_declaration", "constructor_declaration"}:
+            cur = cur.parent
+        return cur
+
+    # AST-based: Java for/while 循环体为空（遍历结果被静默丢弃）。
+    @classmethod
+    def _scan_java_empty_loop_body(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        seen: set[tuple[int, int]] = set()
+        for node in cls._walk_nodes(document.root_node):
+            if node.type not in {"enhanced_for_statement", "for_statement", "while_statement"}:
+                continue
+            body = node.child_by_field_name("body")
+            if body is None or body.type != "block":
+                continue
+            if [c for c in body.named_children if c.type != "comment"]:
+                continue
+            anchor = cls._java_enclosing_method(node) or node
+            line_start, line_end = document.line_range(anchor)
+            if (line_start, line_end) in seen:
+                continue
+            seen.add((line_start, line_end))
+            hits.append(
+                RuleHit(
+                    EMPTY_LOOP_BODY, document.relative_path,
+                    line_start, line_end, language=language,
+                    message="for/while 循环体为空，遍历元素未做任何处理，业务数据被静默丢弃。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 循环内逐条 executeUpdate（DELETE/UPDATE/INSERT 逐条写库）。
+    @classmethod
+    def _scan_java_loop_row_dml(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        seen: set[tuple[int, int]] = set()
+        for node in cls._walk_nodes(document.root_node):
+            if node.type not in {"enhanced_for_statement", "for_statement", "while_statement"}:
+                continue
+            if not any(
+                n.type == "method_invocation" and "executeUpdate" in document.text_for(n)
+                for n in cls._walk_nodes(node)
+            ):
+                continue
+            anchor = cls._java_enclosing_method(node) or node
+            line_start, line_end = document.line_range(anchor)
+            if (line_start, line_end) in seen:
+                continue
+            seen.add((line_start, line_end))
+            hits.append(
+                RuleHit(
+                    LOOP_ROW_DML, document.relative_path,
+                    line_start, line_end, language=language,
+                    message="循环内逐条执行写操作，应合并为批处理或 WHERE id IN(...)。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 循环内 new Thread().start()（无界线程创建）。
+    @classmethod
+    def _scan_java_loop_new_thread(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        seen: set[tuple[int, int]] = set()
+        for node in cls._walk_nodes(document.root_node):
+            if node.type not in {"enhanced_for_statement", "for_statement", "while_statement"}:
+                continue
+            text = document.text_for(node)
+            if "new Thread" not in text or ".start()" not in text:
+                continue
+            anchor = cls._java_enclosing_method(node) or node
+            line_start, line_end = document.line_range(anchor)
+            if (line_start, line_end) in seen:
+                continue
+            seen.add((line_start, line_end))
+            hits.append(
+                RuleHit(
+                    LOOP_NEW_THREAD, document.relative_path,
+                    line_start, line_end, language=language,
+                    message="循环内为每个元素创建新线程，建议改用线程池限制并发度。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 工厂/选择方法对未覆盖分支返回 null。
+    @classmethod
+    def _scan_java_factory_return_null(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            name_node = node.child_by_field_name("name")
+            if name_node is None:
+                continue
+            name = document.text_for(name_node).strip()
+            if not re.search(r"^(?:get|create|resolve|select|build|make|new|choose|pick)\w+", name):
+                continue
+            if re.search(r"find|query|search|byId|ById", name):
+                continue
+            text = document.text_for(node)
+            if not re.search(r"return\s+null\s*;", text):
+                continue
+            if not re.search(r"return\s+(?!null\b)[^;]+;", text):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    FACTORY_RETURN_NULL, document.relative_path,
+                    line_start, line_end, language=language,
+                    message=f"{name}() 对未覆盖分支 return null，调用方可能直接解引用 NPE。",
+                )
+            )
+        return hits
+
+    # AST-based: Java N+1 查询（循环内 find 调用 / 方法名 With 且多次 find 调用）。
+    @classmethod
+    def _scan_java_n_plus_one_query(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            name_node = node.child_by_field_name("name")
+            name = document.text_for(name_node).strip() if name_node else ""
+            text = document.text_for(node)
+            loop_find = False
+            for ln in cls._walk_nodes(node):
+                if ln.type not in {"enhanced_for_statement", "for_statement", "while_statement"}:
+                    continue
+                if any(
+                    n.type == "method_invocation" and re.search(r"\bfind\w+\s*\(", document.text_for(n))
+                    for n in cls._walk_nodes(ln)
+                ):
+                    loop_find = True
+                    break
+            multi_find = bool(re.search(r"With\w*$", name)) and len(re.findall(r"\bfind\w+\s*\(", text)) >= 2
+            if not (loop_find or multi_find):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    N_PLUS_ONE_QUERY, document.relative_path,
+                    line_start, line_end, language=language,
+                    message=f"{name}() 存在 N+1 查询：循环内逐条查询关联数据，建议 JOIN 或批量 IN。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 订阅者/监听器列表用非线程安全 ArrayList。
+    @classmethod
+    def _scan_java_non_thread_safe_subscriber_list(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "field_declaration":
+                continue
+            text = document.text_for(node)
+            if "ArrayList" not in text:
+                continue
+            fname = ""
+            declarator = cls._find_child(node, "variable_declarator")
+            if declarator is not None:
+                dn = declarator.child_by_field_name("name")
+                if dn is not None:
+                    fname = document.text_for(dn).strip()
+            cls_name = ""
+            p = node.parent
+            while p is not None and p.type != "class_declaration":
+                p = p.parent
+            if p is not None:
+                cn = p.child_by_field_name("name")
+                if cn is not None:
+                    cls_name = document.text_for(cn).strip()
+            hay = f"{fname} {cls_name}".lower()
+            if not re.search(r"subscriber|listener|handler|observer|callback|event|bus|publish|dispatch|emit", hay):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    NON_THREAD_SAFE_SUBSCRIBER_LIST, document.relative_path,
+                    line_start, line_end, language=language,
+                    message=f"订阅者列表 {fname or 'list'} 使用非线程安全 ArrayList，并发遍历/修改可能 ConcurrentModificationException。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 并发环境下对 long/int 字段非原子累加。
+    @classmethod
+    def _scan_java_non_atomic_field_accumulate(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for cnode in cls._walk_nodes(document.root_node):
+            if cnode.type != "class_declaration":
+                continue
+            ctext = document.text_for(cnode)
+            if "ConcurrentHashMap" not in ctext:
+                continue
+            fields: list[str] = []
+            for f in cls._walk_nodes(cnode):
+                if f.type != "field_declaration":
+                    continue
+                ft = document.text_for(f)
+                if re.search(r"\bvolatile\b|AtomicLong|AtomicInteger|LongAdder", ft):
+                    continue
+                m = re.search(r"\b(?:long|int)\s+(\w+)\s*[=;]", ft)
+                if m:
+                    fields.append(m.group(1))
+            if not fields:
+                continue
+            for mn in cls._walk_nodes(cnode):
+                if mn.type != "method_declaration":
+                    continue
+                mt = document.text_for(mn)
+                for fname in fields:
+                    if re.search(r"\b" + re.escape(fname) + r"\s*\+=", mt):
+                        line_start, line_end = document.line_range(mn)
+                        hits.append(
+                            RuleHit(
+                                NON_ATOMIC_FIELD_ACCUMULATE, document.relative_path,
+                                line_start, line_end, language=language,
+                                message=f"字段 {fname} 非原子累加（+=），并发下可能丢失更新，建议改用 AtomicLong/同步。",
+                            )
+                        )
+                        break
+        return hits
+
+    # AST-based: Java SELECT ... FOR UPDATE 未指定 NOWAIT/SKIP LOCKED。
+    @classmethod
+    def _scan_java_for_update_no_nowait(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            text = document.text_for(node)
+            if not re.search(r"\bFOR\s+UPDATE\b", text, re.IGNORECASE):
+                continue
+            if re.search(r"\bNOWAIT\b|\bSKIP\s+LOCKED\b", text, re.IGNORECASE):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    FOR_UPDATE_NO_NOWAIT, document.relative_path,
+                    line_start, line_end, language=language,
+                    message="SELECT ... FOR UPDATE 未指定 NOWAIT/SKIP LOCKED，锁等待可能无限阻塞。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 死信队列只写入不消费。
+    @classmethod
+    def _scan_java_dead_letter_queue_never_consumed(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "field_declaration":
+                continue
+            ftext = document.text_for(node)
+            m = re.search(r"(?:List|Queue|Deque)\s*<[^>]*>\s*(\w+)\s*=", ftext)
+            fname = m.group(1) if m else ""
+            if not fname:
+                continue
+            cls_node = node
+            while cls_node is not None and cls_node.type != "class_declaration":
+                cls_node = cls_node.parent
+            if cls_node is None:
+                continue
+            ctext = document.text_for(cls_node)
+            if re.search(r"\b" + re.escape(fname) + r"\s*\.\s*(?:poll|remove|take|drainTo|clear|peek)\s*\(", ctext):
+                continue
+            if not re.search(r"\b" + re.escape(fname) + r"\s*\.\s*add\s*\(", ctext):
+                continue
+            # 失败路径信号：add 必须发生在失败/异常处理上下文，
+            # 排除 subscribers 这类正常注册的只增列表。
+            fail_sem = re.compile(
+                r"\bcatch\b|\bFAILED\b|\bfail\s*\(|!\s*[\w.]*isSuccess\s*\("
+            )
+            in_failure_path = False
+            for call in cls._walk_nodes(cls_node):
+                if call.type != "method_invocation":
+                    continue
+                if not re.search(r"\b" + re.escape(fname) + r"\s*\.\s*add\s*\(", document.text_for(call)):
+                    continue
+                mnode = call
+                while mnode is not None and mnode.type not in {"method_declaration", "constructor_declaration"}:
+                    mnode = mnode.parent
+                if mnode is not None and fail_sem.search(document.text_for(mnode)):
+                    in_failure_path = True
+                    break
+            if not in_failure_path:
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    DEAD_LETTER_QUEUE_NEVER_CONSUMED, document.relative_path,
+                    line_start, line_end, language=language,
+                    message=f"死信队列 {fname} 只写入不消费，内存无界增长，失败消息永久丢失。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 递归遍历缺少深度/环保护。
+    @classmethod
+    def _scan_java_recursion_no_boundary_guard(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            name_node = node.child_by_field_name("name")
+            if name_node is None:
+                continue
+            name = document.text_for(name_node).strip()
+            text = document.text_for(node)
+            if len(re.findall(r"\b" + re.escape(name) + r"\s*\(", text)) < 2:
+                continue
+            # 仅当自调用发生在循环体内（遍历型递归）才判定，避免误报 fib/阶乘等非遍历递归。
+            recur_in_loop = False
+            for ln in cls._walk_nodes(node):
+                if ln.type not in {"enhanced_for_statement", "for_statement", "while_statement"}:
+                    continue
+                if any(
+                    n.type == "method_invocation"
+                    and re.search(r"\b" + re.escape(name) + r"\s*\(", document.text_for(n))
+                    for n in cls._walk_nodes(ln)
+                ):
+                    recur_in_loop = True
+                    break
+            if not recur_in_loop:
+                continue
+            if re.search(r"\b(?:depth|level)\s*(?:>|>=|==)\s*\d+", text):
+                continue
+            if re.search(r"\bvisited\b|\.contains\s*\(|Set\s*<", text):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    RECURSION_NO_BOUNDARY_GUARD, document.relative_path,
+                    line_start, line_end, language=language,
+                    message=f"{name}() 递归遍历缺少深度上限或环检测，深嵌套/成环数据会栈溢出。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 事件在持久化前发布。
+    @classmethod
+    def _scan_java_publish_before_persist(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            text = document.text_for(node)
+            m_pub = re.search(r"\.\s*publish\s*\(", text)
+            m_save = re.search(r"\.\s*save\s*\(", text)
+            if m_pub is None or m_save is None:
+                continue
+            if m_pub.start() >= m_save.start():
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    PUBLISH_BEFORE_PERSIST, document.relative_path,
+                    line_start, line_end, language=language,
+                    message="事件在 save() 持久化前发布，保存失败时下游已收到虚假事件。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 批处理 catch 只递增计数不记录。
+    @classmethod
+    def _scan_java_batch_failure_swallowed(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "catch_clause":
+                continue
+            text = document.text_for(node)
+            if re.search(r"\b(?:log|logger|print|warn|error|throw|printStackTrace|System\.err)\b", text):
+                continue
+            if not re.search(r"\+\+\s*;|\+\s*=\s*1\s*;", text):
+                continue
+            method = cls._java_enclosing_method(node)
+            if method is None:
+                line_start, line_end = document.line_range(node)
+            else:
+                line_start, line_end = document.line_range(method)
+            hits.append(
+                RuleHit(
+                    BATCH_FAILURE_SWALLOWED, document.relative_path,
+                    line_start, line_end, language=language,
+                    message="批处理 catch 块只递增计数无日志/错误详情，失败项被静默丢弃。",
+                )
+            )
+        return hits
+
+    # AST-based: Java JOIN 的 ON 条件为同表同字段恒真。
+    @classmethod
+    def _scan_java_cross_join_self_on(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            text = document.text_for(node)
+            if not re.search(r"\bON\s+(\w+)\.(\w+)\s*=\s*\1\.\2\b", text):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    CROSS_JOIN_SELF_ON, document.relative_path,
+                    line_start, line_end, language=language,
+                    message="JOIN 的 ON 条件为同表同字段恒真（笛卡尔积），结果集爆炸膨胀。",
+                )
+            )
+        return hits
+
+    # AST-based: Java getter 方法每次调用都触发类内线程创建。
+    @classmethod
+    def _scan_java_getter_spawns_thread(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for cnode in cls._walk_nodes(document.root_node):
+            if cnode.type != "class_declaration":
+                continue
+            methods: dict[str, tuple[Node, str]] = {}
+            for mn in cls._walk_nodes(cnode):
+                if mn.type != "method_declaration":
+                    continue
+                nn = mn.child_by_field_name("name")
+                if nn is None:
+                    continue
+                methods[document.text_for(nn).strip()] = (mn, document.text_for(mn))
+            for mname, (mnode, mtext) in methods.items():
+                if not re.match(r"^get\w+", mname):
+                    continue
+                if "new Thread" in mtext:
+                    continue
+                for called in re.findall(r"\b(\w+)\s*\(", mtext):
+                    if called in methods and "new Thread" in methods[called][1]:
+                        line_start, line_end = document.line_range(mnode)
+                        hits.append(
+                            RuleHit(
+                                GETTER_SPAWNS_THREAD, document.relative_path,
+                                line_start, line_end, language=language,
+                                message=f"{mname}() 每次调用都触发线程创建，高并发下线程数无界。",
+                            )
+                        )
+                        break
+        return hits
+
+    # AST-based: Java 广播方法循环内逐条发送。
+    @classmethod
+    def _scan_java_broadcast_row_send(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            nn = node.child_by_field_name("name")
+            if nn is None:
+                continue
+            name = document.text_for(nn).strip()
+            loop_send = False
+            for ln in cls._walk_nodes(node):
+                if ln.type not in {"enhanced_for_statement", "for_statement", "while_statement"}:
+                    continue
+                if any(
+                    n.type == "method_invocation" and re.search(r"\bsend\s*\(", document.text_for(n))
+                    for n in cls._walk_nodes(ln)
+                ):
+                    loop_send = True
+                    break
+            if not loop_send:
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    BROADCAST_ROW_SEND, document.relative_path,
+                    line_start, line_end, language=language,
+                    message=f"{name}() 循环内逐条 send，无批处理/并发，大用户量下耗时且部分丢失。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 缓存 getOrLoad 无击穿保护。
+    @classmethod
+    def _scan_java_cache_get_or_load_no_lock(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            nn = node.child_by_field_name("name")
+            if nn is None:
+                continue
+            name = document.text_for(nn).strip()
+            text = document.text_for(node)
+            # 缓存 get-or-load 结构：get + null 判空 + load + put，且无并发保护。
+            if not re.search(r"\bget\s*\(", text):
+                continue
+            if not re.search(r"==\s*null|!=\s*null", text):
+                continue
+            if not re.search(r"\bload\s*\(", text):
+                continue
+            if not re.search(r"\bput\s*\(", text):
+                continue
+            if re.search(r"synchronized|computeIfAbsent|ReentrantLock|\bLock\b|\.compute\s*\(", text):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    CACHE_GET_OR_LOAD_NO_LOCK, document.relative_path,
+                    line_start, line_end, language=language,
+                    message=f"{name}() 无击穿保护，热点 key 过期时并发穿透数据库。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 限流计数非原子 check-then-decrement。
+    @classmethod
+    def _scan_java_rate_limit_toctou(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            text = document.text_for(node)
+            m = re.search(r"\b(\w+)\.(\w+)\s*>\s*0", text)
+            if not m:
+                continue
+            obj, field = m.group(1), m.group(2)
+            if not re.search(r"\b" + re.escape(obj) + r"\." + re.escape(field) + r"\s*--", text):
+                continue
+            if re.search(r"synchronized|AtomicInteger|AtomicLong|decrementAndGet|getAndDecrement", text):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    RATE_LIMIT_TOCTOU, document.relative_path,
+                    line_start, line_end, language=language,
+                    message=f"{obj}.{field} 非原子 check-then-decrement，并发下可绕过限流/计数。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 循环内按参数顺序加锁且不排序（ABBA 死锁风险）。
+    @classmethod
+    def _scan_java_loop_lock_no_sort(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for node in cls._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            text = document.text_for(node)
+            if re.search(r"\bsort\b|\.sorted\s*\(", text):
+                continue
+            for ln in cls._walk_nodes(node):
+                if ln.type not in {"enhanced_for_statement", "for_statement", "while_statement"}:
+                    continue
+                if any(
+                    n.type == "method_invocation" and re.search(r"\block\s*\(", document.text_for(n))
+                    for n in cls._walk_nodes(ln)
+                ):
+                    line_start, line_end = document.line_range(node)
+                    hits.append(
+                        RuleHit(
+                            LOOP_LOCK_NO_SORT, document.relative_path,
+                            line_start, line_end, language=language,
+                            message="循环内按参数顺序加锁且不排序，多线程相反顺序会 ABBA 死锁。",
+                        )
+                    )
+                    break
+        return hits
+
+    # AST-based: Java 带 TTL 的缓存无后台清理线程。
+    @classmethod
+    def _scan_java_cache_no_cleanup(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for cnode in cls._walk_nodes(document.root_node):
+            if cnode.type != "class_declaration":
+                continue
+            ctext = document.text_for(cnode)
+            if "expireAt" not in ctext and "isExpired" not in ctext:
+                continue
+            if "ConcurrentHashMap" not in ctext and "ConcurrentMap" not in ctext:
+                continue
+            if re.search(r"new Thread|ScheduledExecutor|Timer|scheduleAtFixedRate|\bschedule\b|cleanup|evict|\.clear\s*\(", ctext):
+                continue
+            line_start, line_end = document.line_range(cnode)
+            hits.append(
+                RuleHit(
+                    CACHE_NO_CLEANUP, document.relative_path,
+                    line_start, line_end, language=language,
+                    message="缓存带 TTL 过期但无后台清理线程，过期条目永久驻留内存。",
+                )
+            )
+        return hits
+
+    # AST-based: Java 并发 map 窗口 flush 的 remove-then-read 非原子导致二次计数。
+    @classmethod
+    def _scan_java_window_flush_double_count(
+        cls, document: TreeSitterDocument, language: str,
+    ) -> list[RuleHit]:
+        hits: list[RuleHit] = []
+        for cnode in cls._walk_nodes(document.root_node):
+            if cnode.type != "class_declaration":
+                continue
+            ctext = document.text_for(cnode)
+            if not re.search(r"computeIfAbsent\s*\(", ctext):
+                continue
+            field_names = set(
+                re.findall(r"(?:ConcurrentHashMap|ConcurrentMap)\s*<[^>;]*>\s*(\w+)\s*[;=]", ctext)
+            ) | set(
+                re.findall(r"(\w+)\s*=\s*new\s+(?:\w+\.)*ConcurrentHashMap\s*<", ctext)
+            )
+            for fname in field_names:
+                if not re.search(r"\b" + re.escape(fname) + r"\.computeIfAbsent\s*\(", ctext):
+                    continue
+                for mnode in cls._walk_nodes(cnode):
+                    if mnode.type != "method_declaration":
+                        continue
+                    mtext = document.text_for(mnode)
+                    m_remove = re.search(r"\b" + re.escape(fname) + r"\.remove\s*\(", mtext)
+                    if m_remove is None:
+                        continue
+                    after = mtext[m_remove.end():]
+                    if not re.search(r"\.stream\s*\(|\.sum\s*\(|\.values\s*\(", after):
+                        continue
+                    if re.search(r"synchronized|ReentrantLock|\.compute\s*\(", mtext):
+                        continue
+                    line_start, line_end = document.line_range(mnode)
+                    hits.append(
+                        RuleHit(
+                            WINDOW_FLUSH_DOUBLE_COUNT, document.relative_path,
+                            line_start, line_end, language=language,
+                            message=f"{fname}.remove() 后读取聚合值，但并发 computeIfAbsent() 会在 remove 后重建条目，已 flush 数据被二次计入。",
+                        )
+                    )
+                    break
+        return hits
 
     def _scan_ast(
         self,
@@ -3376,6 +5186,14 @@ class DefectEngine:
         """Check if node is a call_expression to func_name."""
         if node.type not in {"call_expression", "method_invocation"}:
             return False
+        # Java method_invocation with an explicit receiver other than this/super
+        # is a call on another object (e.g. executor.submit()), not self-recursion.
+        if node.type == "method_invocation":
+            obj = node.child_by_field_name("object")
+            if obj is not None:
+                obj_text = document.text_for(obj).strip()
+                if obj_text not in {"this", "super"}:
+                    return False
         fn_node = node.child_by_field_name("function") or node.child_by_field_name("name")
         if fn_node is None:
             # Try first named child
@@ -4567,9 +6385,14 @@ class DefectEngine:
             line_start, line_end = document.line_range(node)
             text = document.text_for(node)
             if node.type == "catch_clause":
-                if re.search(r"\b(?:Exception|Throwable|Error)\b", text):
-                    hits.append(RuleHit(BROAD_EXCEPT, document.relative_path, line_start, line_end, language=language))
                 block = node.child_by_field_name("body") or self._find_child(node, "block")
+                if re.search(r"\b(?:Exception|Throwable|Error)\b", text):
+                    # A catch that re-throws (or wraps and throws) does not swallow.
+                    rethrows = block is not None and any(
+                        c.type == "throw_statement" for c in self._walk_nodes(block)
+                    )
+                    if not rethrows:
+                        hits.append(RuleHit(BROAD_EXCEPT, document.relative_path, line_start, line_end, language=language))
                 if block is not None:
                     block_children = [c for c in block.named_children if c.type != "comment"]
                     if not block_children:
@@ -4581,7 +6404,8 @@ class DefectEngine:
                             message="Catch block only logs the exception and swallows it — add re-throw or recovery logic.",
                         ))
             elif node.type == "method_invocation":
-                if "System.out.println" in text or "System.err.println" in text:
+                # stderr is an error log channel, not a debug print; only flag stdout.
+                if "System.out.println" in text or "System.out.print" in text:
                     hits.append(RuleHit(PRINT_DEBUG, document.relative_path, line_start, line_end, language=language))
             elif node.type == "assert_statement":
                 hits.append(RuleHit(ASSERT_USED, document.relative_path, line_start, line_end, language=language))
@@ -4608,8 +6432,248 @@ class DefectEngine:
         hits.extend(self._scan_java_equals_on_array(document, language))
         hits.extend(self._scan_java_integer_boxing_eq(document, language))
         hits.extend(self._scan_switch_no_default_java(document, language))
+        hits.extend(self._scan_java_like_pattern_escape(document, language))
+        hits.extend(self._scan_java_utf8_byte_truncate(document, language))
+        hits.extend(self._scan_java_integer_division_precision(document, language))
+        hits.extend(self._scan_java_integer_mult_overflow(document, language))
+        hits.extend(self._scan_java_float_money_calc(document, language))
+        hits.extend(self._scan_java_equals_incomplete_fields(document, language))
+        hits.extend(self._scan_java_result_return_null(document, language))
+        hits.extend(self._scan_java_negative_quantity_return(document, language))
+        hits.extend(self._scan_java_division_by_collection_size(document, language))
+        hits.extend(self._scan_java_growth_rate_divide_by_zero(document, language))
+        hits.extend(self._scan_java_int_accumulate_long(document, language))
+        hits.extend(self._scan_java_chained_getter_deref(document, language))
+        hits.extend(self._scan_java_result_ok_nullable(document, language))
+        hits.extend(self._scan_java_nullable_value_use(document, language))
+        hits.extend(self._scan_java_empty_loop_body(document, language))
+        hits.extend(self._scan_java_loop_row_dml(document, language))
+        hits.extend(self._scan_java_loop_new_thread(document, language))
+        hits.extend(self._scan_java_factory_return_null(document, language))
+        hits.extend(self._scan_java_n_plus_one_query(document, language))
+        hits.extend(self._scan_java_non_thread_safe_subscriber_list(document, language))
+        hits.extend(self._scan_java_non_atomic_field_accumulate(document, language))
+        hits.extend(self._scan_java_for_update_no_nowait(document, language))
+        hits.extend(self._scan_java_dead_letter_queue_never_consumed(document, language))
+        hits.extend(self._scan_java_recursion_no_boundary_guard(document, language))
+        hits.extend(self._scan_java_publish_before_persist(document, language))
+        hits.extend(self._scan_java_batch_failure_swallowed(document, language))
+        hits.extend(self._scan_java_cross_join_self_on(document, language))
+        hits.extend(self._scan_java_getter_spawns_thread(document, language))
+        hits.extend(self._scan_java_broadcast_row_send(document, language))
+        hits.extend(self._scan_java_cache_get_or_load_no_lock(document, language))
+        hits.extend(self._scan_java_rate_limit_toctou(document, language))
+        hits.extend(self._scan_java_loop_lock_no_sort(document, language))
+        hits.extend(self._scan_java_cache_no_cleanup(document, language))
+        hits.extend(self._scan_java_window_flush_double_count(document, language))
+        hits.extend(self._scan_java_assignment_in_condition(document, language))
+        hits.extend(self._scan_java_constant_return_guard(document, language))
+        hits.extend(self._scan_java_insecure_string_hash(document, language))
+        hits.extend(self._scan_java_pagination_integer_division(document, language))
+        hits.extend(self._scan_java_null_branch_return_ok(document, language))
+        hits.extend(self._scan_java_safe_method_returns_nullable(document, language))
+        hits.extend(self._scan_java_csv_injection(document, language))
+        hits.extend(self._scan_java_quantity_add_overflow(document, language))
         return hits
 
+    def _scan_java_null_branch_return_ok(self, document: TreeSitterDocument, language: str) -> list[RuleHit]:
+        """Detect `if (x == null) { return Result.ok(x) }` — null treated as success."""
+        hits: list[RuleHit] = []
+        for node in self._walk_nodes(document.root_node):
+            if node.type != "if_statement":
+                continue
+            cond = node.child_by_field_name("condition")
+            if cond is None:
+                continue
+            ctext = document.text_for(cond)
+            m = re.search(r"(\w+)\s*==\s*null", ctext)
+            if not m:
+                continue
+            var = m.group(1)
+            consequent = node.child_by_field_name("consequence")
+            if consequent is None:
+                continue
+            cbody = document.text_for(consequent)
+            if not re.search(r"Result\s*\.\s*ok\s*\(\s*(?:null|" + re.escape(var) + r")\s*\)", cbody):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(RuleHit(
+                NULL_BRANCH_RETURN_OK, document.relative_path,
+                line_start, line_end, language=language,
+                message=f"判空分支仍返回 Result.ok({var})，把 null 当成功返回。",
+            ))
+        return hits
+
+    def _scan_java_safe_method_returns_nullable(self, document: TreeSitterDocument, language: str) -> list[RuleHit]:
+        """Detect getXxxSafe methods that directly return a nullable query result."""
+        hits: list[RuleHit] = []
+        for node in self._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            name_node = node.child_by_field_name("name")
+            if name_node is None:
+                continue
+            mname = document.text_for(name_node).strip()
+            if not re.search(r"Safe$", mname):
+                continue
+            body = node.child_by_field_name("body")
+            if body is None:
+                continue
+            stmts = [c for c in body.named_children if c.type != "comment"]
+            if len(stmts) != 1 or stmts[0].type != "return_statement":
+                continue
+            rtext = document.text_for(stmts[0])
+            if not re.search(r"return\s+\w+\.(?:findById|findBy|findOne|find|get|query|load)\w*\s*\(", rtext):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(RuleHit(
+                SAFE_METHOD_RETURNS_NULLABLE, document.relative_path,
+                line_start, line_end, language=language,
+                message=f"方法 {mname}() 直接透传可空查询结果，违背 Safe 命名承诺。",
+            ))
+        return hits
+
+    def _scan_java_csv_injection(self, document: TreeSitterDocument, language: str) -> list[RuleHit]:
+        """Detect CSV export methods that append user fields without escaping."""
+        hits: list[RuleHit] = []
+        for node in self._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            name_node = node.child_by_field_name("name")
+            name = document.text_for(name_node).strip() if name_node else ""
+            if not re.search(r"csv|export", name, re.IGNORECASE):
+                continue
+            text = document.text_for(node)
+            if not re.search(r"\.append\s*\([^)]*\.get\w+\s*\(\s*\)", text):
+                continue
+            if re.search(r"\bescape\w*\s*\(|\breplace\w*\s*\(|\bquote\w*\s*\(|\bsanitize\w*\s*\(", text):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(RuleHit(
+                CSV_INJECTION, document.relative_path,
+                line_start, line_end, language=language,
+                message=f"{name}() 直接拼接用户字段到 CSV 未转义，存在公式注入风险。",
+            ))
+        return hits
+
+    def _scan_java_quantity_add_overflow(self, document: TreeSitterDocument, language: str) -> list[RuleHit]:
+        """Detect quantity accumulation `setXxxQuantity(getXxxQuantity() + n)` without overflow guard."""
+        hits: list[RuleHit] = []
+        for node in self._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            name_node = node.child_by_field_name("name")
+            name = document.text_for(name_node).strip() if name_node else ""
+            if not re.search(r"replenish|add|increase|restock|increment|refill", name, re.IGNORECASE):
+                continue
+            text = document.text_for(node)
+            if not re.search(r"set\w*[Qq]uantity\s*\(\s*(?:\w+\.)?get\w*[Qq]uantity\s*\(\s*\)\s*\+\s*\w+", text):
+                continue
+            if re.search(r"\baddExact\b|\bMath\.max\b|\bInteger\.MAX_VALUE\b|availableQuantity\s*<=", text):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(RuleHit(
+                QUANTITY_ADD_OVERFLOW, document.relative_path,
+                line_start, line_end, language=language,
+                message="库存数量累加未做溢出/上限校验，quantity 过大时 int 溢出为负。",
+            ))
+        return hits
+
+    def _scan_java_assignment_in_condition(self, document: TreeSitterDocument, language: str) -> list[RuleHit]:
+        """Detect `return (this.x = y) != null` — assignment used as a boolean condition."""
+        hits: list[RuleHit] = []
+        assign_cmp = re.compile(r"\(\s*[\w.$\s]+\s*=\s*[^=;]+?\)\s*(?:!=|==)")
+        for node in self._walk_nodes(document.root_node):
+            if node.type != "return_statement":
+                continue
+            text = document.text_for(node)
+            if not assign_cmp.search(text):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(RuleHit(
+                ASSIGNMENT_IN_CONDITION, document.relative_path,
+                line_start, line_end, language=language,
+                message="赋值(=)被用作布尔条件，条件实际比较的是赋值结果而非相等性 — 应改为 == 或 .equals()。",
+            ))
+        return hits
+
+    def _scan_java_constant_return_guard(self, document: TreeSitterDocument, language: str) -> list[RuleHit]:
+        """Detect guard methods (is/has/can/validate/check) that always return a constant."""
+        hits: list[RuleHit] = []
+        for node in self._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            name_node = node.child_by_field_name("name")
+            if name_node is None:
+                continue
+            mname = document.text_for(name_node).strip()
+            if not re.match(r"^(?:is|has|can|should|must|validate|check)[A-Z_]", mname):
+                continue
+            rt = node.child_by_field_name("type")
+            if rt is not None and "boolean" not in document.text_for(rt):
+                continue
+            body = node.child_by_field_name("body")
+            if body is None:
+                continue
+            stmts = [c for c in body.named_children if c.type != "comment"]
+            if len(stmts) != 1 or stmts[0].type != "return_statement":
+                continue
+            rtext = document.text_for(stmts[0])
+            if not re.search(r"return\s+(?:true|false)\s*;", rtext):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(RuleHit(
+                CONSTANT_RETURN_IN_GUARD, document.relative_path,
+                line_start, line_end, language=language,
+                message=f"守卫方法 {mname}() 恒返回常量，短路了判断逻辑。",
+            ))
+        return hits
+
+    def _scan_java_insecure_string_hash(self, document: TreeSitterDocument, language: str) -> list[RuleHit]:
+        """Detect hash/token/digest methods that use String.hashCode()."""
+        hits: list[RuleHit] = []
+        for node in self._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            name_node = node.child_by_field_name("name")
+            if name_node is None:
+                continue
+            mname = document.text_for(name_node).strip()
+            if not re.search(r"hash|token|digest|signature", mname, re.IGNORECASE):
+                continue
+            mtext = document.text_for(node)
+            if ".hashCode()" not in mtext:
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(RuleHit(
+                INSECURE_STRING_HASH, document.relative_path,
+                line_start, line_end, language=language,
+                message=f"方法 {mname}() 在哈希上下文中使用 String.hashCode()，应改用 SHA-256 等密码学哈希。",
+            ))
+        return hits
+
+    def _scan_java_pagination_integer_division(self, document: TreeSitterDocument, language: str) -> list[RuleHit]:
+        """Detect total-pages methods using integer division without ceil."""
+        hits: list[RuleHit] = []
+        for node in self._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            name_node = node.child_by_field_name("name")
+            if name_node is None:
+                continue
+            mname = document.text_for(name_node).strip()
+            if not re.search(r"totalpages|pagecount|totalpage|numpages", mname, re.IGNORECASE):
+                continue
+            mtext = document.text_for(node)
+            if not re.search(r"return\s+[\w.]+\s*/\s*[\w.]+(?:\s*[;+\-*/])", mtext):
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(RuleHit(
+                PAGINATION_INTEGER_DIVISION, document.relative_path,
+                line_start, line_end, language=language,
+                message=f"分页方法 {mname}() 用整数除法计算总页数，未向上取整，末页数据会丢失。",
+            ))
+        return hits
 
 
     _JAVA_RESOURCE_FACTORIES = frozenset({
@@ -4683,6 +6747,40 @@ class DefectEngine:
                     line_start, line_end, language=language,
                     message=f"`.{method_name}()` may return null but result is chained directly — add null check.",
                 ))
+        # 变量赋值为可空查询结果后，未经判空直接解引用。
+        nullable_assign = re.compile(
+            r"\b\w+\s+(\w+)\s*=\s*[\w.]+\.(?:findById|findBy\w+|findOne|findFirst|find|query|load|getOrNull|findOrNull|get)\s*\("
+        )
+        for lvd in self._walk_nodes(document.root_node):
+            if lvd.type != "local_variable_declaration":
+                continue
+            lvd_text = document.text_for(lvd)
+            m = nullable_assign.search(lvd_text)
+            if m is None:
+                continue
+            var = m.group(1)
+            mnode = lvd.parent
+            while mnode is not None and mnode.type != "method_declaration":
+                mnode = mnode.parent
+            if mnode is None:
+                continue
+            mtext = document.text_for(mnode)
+            idx = mtext.find(lvd_text)
+            if idx < 0:
+                continue
+            rest = mtext[idx + len(lvd_text):]
+            deref = re.search(r"\b" + re.escape(var) + r"\.\w+\s*\(", rest)
+            if deref is None:
+                continue
+            between = rest[:deref.start()]
+            if re.search(r"\b" + re.escape(var) + r"\s*[!=]=\s*null", between):
+                continue
+            line_start, line_end = document.line_range(lvd)
+            hits.append(RuleHit(
+                POSSIBLE_NONE_DEREF, document.relative_path,
+                line_start, line_end, language=language,
+                message=f"变量 {var} 赋值为可空查询结果后未经判空直接解引用，可能 NPE。",
+            ))
         return hits
 
     def _scan_java_nullable_flow(self, document: TreeSitterDocument, language: str) -> list[RuleHit]:
@@ -4883,15 +6981,24 @@ class DefectEngine:
             text = document.text_for(node)
             if "throw" in text:
                 continue
-            has_log = re.search(r"(?:logger\s*\.|log\s*\.|System\.(?:err|out)\.|printStackTrace\s*\()", text) is not None
-            swallows_flow = re.search(r"\breturn\s+(?:null|false|true|0|\"\")\s*;|\b(?:continue|break)\s*;", text) is not None
-            if not (has_log and swallows_flow):
+            # 正确处理线程中断（interrupt()）不属于吞异常。
+            if "interrupt()" in text:
                 continue
-            line_start, line_end = document.line_range(node)
+            swallows_flow = re.search(r"\breturn\s+(?:null|false|true|0|\"\")\s*;|\b(?:continue|break)\s*;", text) is not None
+            if not swallows_flow:
+                continue
+            # 用方法级 line range，吞异常的影响范围是整个方法的失败可见性。
+            method = node.parent
+            while method is not None and method.type not in {"method_declaration", "constructor_declaration"}:
+                method = method.parent
+            if method is not None:
+                line_start, line_end = document.line_range(method)
+            else:
+                line_start, line_end = document.line_range(node)
             hits.append(RuleHit(
                 SWALLOWED_EXCEPTION_FLOW, document.relative_path,
                 line_start, line_end, language=language,
-                message="Catch block logs the exception then returns a default value or continues control flow without propagating failure.",
+                message="Catch block swallows the exception and returns a default value or continues control flow without propagating failure.",
             ))
         return hits
 
@@ -5051,8 +7158,11 @@ class DefectEngine:
             if iterable_node is None or body_node is None:
                 continue
             coll_text = document.text_for(iterable_node).strip()
-            # 仅当迭代对象是简单变量名时分析（避免 for(... : list.subList(...))）
-            if not re.fullmatch(r"[A-Za-z_$][\w$]*", coll_text):
+            # 支持简单变量名，或 xxx.keySet()/entrySet()/values() 视图迭代
+            view = re.fullmatch(r"([A-Za-z_$][\w$]*)\.(?:keySet|entrySet|values)\s*\(\s*\)", coll_text)
+            if view:
+                coll_text = view.group(1)
+            elif not re.fullmatch(r"[A-Za-z_$][\w$]*", coll_text):
                 continue
             # 在 body 内查找 coll.<mut>(...) 调用
             for inner in self._walk_nodes(body_node):

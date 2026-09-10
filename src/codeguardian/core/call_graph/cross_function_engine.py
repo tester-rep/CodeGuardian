@@ -224,7 +224,10 @@ class CrossFunctionEngine:
         symbol_table = pci.symbol_table
 
         for qname, summary in summaries.items():
-            if not summary.may_return_null:
+            # A function is a null source if it returns null locally OR if any
+            # callee in its chain may return null (transitive). Checking only
+            # the local flag missed deep chains (d2-d4) entirely.
+            if not (summary.may_return_null or summary.transitive_may_return_null):
                 continue
 
             # Find callers of this function

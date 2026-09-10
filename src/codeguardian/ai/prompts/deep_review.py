@@ -69,7 +69,8 @@ SCOUT_PROMPT_TEMPLATE = """\
 5. 错误处理：吞异常、只打日志不恢复、错误上下文丢失、错误分支缺失 early return 导致后续逻辑用无效数据。
 6. 性能：循环内 SQL/HTTP/IO（N+1）、O(n²) 算法、锁内 IO、忙等轮询、未设超时、无分页全量查询、循环内字符串拼接、未缓存的重复计算。
 7. 金额精度（代码涉及金额/价格/余额/费用/退款/汇率时）：变量类型为 float/double/number/float64；Java `new BigDecimal(浮点字面量)`；金额算术链中存在隐式 float→decimal 转换。即使变量命名为通用名（value/x/delta），只要语义为货币就计入。
-8. 并发资源生命周期（出现线程池/连接池时）：`Executors.new*ThreadPool` / `new ThreadPoolExecutor` 创建后整个文件无 `shutdown`/`shutdownNow`/`awaitTermination`/容器接管证据。
+8. 业务规则（代码语义涉及金额/订单/退款/折扣/状态机/重试/分页/用户唯一标识时）：金额/折扣符号方向（折扣应减去而非相加）、状态机非法迁移（终态仍可操作）、边界条件方向反了（> 与 >=）、金额"分"单位 int 乘法溢出、负数/零金额无校验、重试无上限、大小写敏感比较导致重复记录、用户输入未转义（存储型 XSS）、Long/Integer 包装类型用 `==` 比较值（引用比较，同值不同对象返回 false 或 null 拆箱 NPE）。
+9. 并发资源生命周期（出现线程池/连接池时）：`Executors.new*ThreadPool` / `new ThreadPoolExecutor` 创建后整个文件无 `shutdown`/`shutdownNow`/`awaitTermination`/容器接管证据。
 
 ## 输出要求
 - 只输出需要专业模型二审的可疑点。
@@ -140,6 +141,23 @@ REVIEW_PROMPT_TEMPLATE = """\
    - **缓存与重复计算**：循环内重复读取不变配置、未缓存的重复计算、未复用的连接对象
    - **大数据路径**：一次性加载大文件/大查询结果到内存、未流式处理
 
+## 领域专题：业务规则正确性（金额/订单/退款/折扣/状态机/重试/分页）
+触发条件：代码语义涉及金额、订单、支付、退款、折扣、优惠、库存、状态流转、重试、分页、用户唯一标识中的任意一个。
+
+必查项：
+1. 【符号方向】折扣、优惠、退款、税额参与加减运算时，核对符号与业务语义一致：折扣必须从总额中"减去"，若写成相加即多收客户钱。
+2. 【状态机非法迁移】状态判断遗漏了应排除的终态（如 REFUNDED / CANCELLED / CLOSED），使终态订单仍可退款、终态支付仍可捕获。
+3. 【边界条件方向】`>` 与 `>=`、`<` 与 `<=` 是否与"窗口内/可退/有效"语义相反（off-by-one）。
+4. 【数值溢出】金额以"分"(cents) 为单位时，`单价分 × 数量` 的 int/long 乘法是否可能溢出（Java int 上限 2_147_483_647）。
+5. 【输入范围校验】金额/数量/价格入参未校验负数或零值即继续处理（负数金额不应拿到授权交易号）。
+6. 【重试无上限】retryCount/attempt 自增但从不校验上限，调用方可无限重试压垮下游。
+7. 【大小写敏感比较】email/用户名/唯一键用大小写敏感的 `equals`/`==` 比较，同一实体（不同大小写）会创建重复记录。
+8. 【未转义的用户输入回显】用户输入（评论/昵称/搜索词）在写库或回显前未做 HTML 转义/清理，导致存储型 XSS。
+9. 【包装类型 == 比较】Long/Integer/Double 等包装类型或 String 用 `==` 比较值（而非 equals）：`==` 按引用比较，仅 -128~127 缓存区间"碰巧"相等，不同对象同值返回 false；包装类型为 null 时 `==` 比较触发拆箱 NPE。应改用 equals / Objects.equals。
+
+evidence 必须给出：变量/状态/金额所在的准确行号、其业务语义、参与的具体运算或判断、以及与正确业务规则的偏差。
+仅当代码确实存在上述业务语义时才检查；通用工具、框架、协议代码不要套用本专题。
+
 ## 领域专题：金额/货币精度（仅当代码涉及金额时检查）
 触发条件：代码中出现金额、价格、余额、费用、税、退款、佣金、薪资、订单总额、汇率换算等金融语义。
 即使变量命名为 `value` / `x` / `delta` / `result` 等通用名，只要语义为货币金额就属此类。
@@ -199,6 +217,7 @@ evidence 必须给出："L{{行号}} 创建 {{线程池类型}}，本文件未�
 ## 上下文：被调用函数签名
 {dependency_signatures}
 
+{callee_bodies_section}
 ## 上下文：本地引擎已发现的问题
 {local_findings_summary}
 
@@ -233,6 +252,11 @@ def _notes_section(context: ContextPack) -> str:
     return f"## 补充提示\n{notes}" if notes else ""
 
 
+def _callee_bodies_section(context: ContextPack) -> str:
+    bodies = context.build_callee_bodies_section()
+    return f"## 上下文：被调用函数体（跨函数分析）\n{bodies}" if bodies else ""
+
+
 def build_review_prompt(context: ContextPack) -> str:
     """Render the professional review prompt with the given context pack."""
     return REVIEW_PROMPT_TEMPLATE.format(
@@ -244,6 +268,7 @@ def build_review_prompt(context: ContextPack) -> str:
         language=context.language or "",
         source_code=context.target_code,
         dependency_signatures=context.build_dependency_section(),
+        callee_bodies_section=_callee_bodies_section(context),
         local_findings_summary=context.local_findings_summary or "无",
         notes_section=_notes_section(context),
         anti_hallucination=ANTI_HALLUCINATION_RULES,

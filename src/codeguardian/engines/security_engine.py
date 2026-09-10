@@ -57,7 +57,7 @@ LANGUAGE_BY_SUFFIX = {
 }
 SUPPORTED_EXTENSIONS = set(LANGUAGE_BY_SUFFIX)
 SENSITIVE_NAME_RE = re.compile(
-    r"(?:password|passwd|pwd|secret|token|credential|api[_-]?key|access[_-]?key)",
+    r"(?:password|passwd|pwd|secret|token|credential|api[_-]?key|access[_-]?key|[a-z]pass\b)",
     re.IGNORECASE,
 )
 SQL_CALL_RE = re.compile(r"(?:^|\.)(?:execute|executeQuery|executeUpdate|query|raw|exec|sqlite3_exec|ExecuteNonQuery|ExecuteReader|ExecuteScalar)$", re.IGNORECASE)
@@ -747,6 +747,71 @@ class SecurityEngine:
                         hits.append(
                             RuleHit(PATH_TRAVERSAL_RISK, document.relative_path, line_start, line_end, language=language)
                         )
+            elif node.type == "string_literal":
+                # 连接串/摘要中拼接的明文凭据，如 "... pass=SmtpPr0d!2024"
+                lit = text.strip("\"'")
+                m = re.search(
+                    r"(?:pass|password|passwd|pwd)\s*=\s*([A-Za-z0-9!@#$%^&*_\-+.]{4,})",
+                    lit, re.IGNORECASE,
+                )
+                if m and not is_non_secret_value(m.group(1)):
+                    hits.append(RuleHit(
+                        HARDCODED_PASSWORD, document.relative_path, line_start, line_end, language=language,
+                        message=f"字符串中拼接了明文凭据: {m.group(0)}",
+                    ))
+        hits.extend(self._scan_java_sql_concat_injection(document, language))
+        return hits
+
+    def _scan_java_sql_concat_injection(self, document: TreeSitterDocument, language: str) -> list[RuleHit]:
+        """Detect Java SQL built by concatenating method parameters (SQL injection).
+
+        Covers two patterns:
+        1. StringBuilder.append(...) chaining user-controlled parameters.
+        2. String sql = "..." + param; / sql += "..." + param;
+        """
+        hits: list[RuleHit] = []
+        for node in self._walk_nodes(document.root_node):
+            if node.type != "method_declaration":
+                continue
+            text = document.text_for(node)
+            if not re.search(r"\b(?:SELECT|INSERT|UPDATE|DELETE)\b", text, re.IGNORECASE):
+                continue
+            params: set[str] = set()
+            for p in self._walk_nodes(node):
+                if p.type == "formal_parameter":
+                    name_node = p.child_by_field_name("name")
+                    if name_node is not None:
+                        params.add(document.text_for(name_node).strip())
+            if not params:
+                continue
+            flagged = False
+            if ".append(" in text:
+                for m in re.finditer(r"\.append\(\s*([^)]+)\)", text):
+                    if any(p in m.group(1) for p in params):
+                        flagged = True
+                        break
+            if not flagged:
+                # "..." + <param-ish expr>（字符串字面量须含 SQL 关键字，排除 setString("%"+kw) 之类非 SQL 拼接）
+                _sql_kw = r"\b(?:SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|ORDER|GROUP|JOIN|VALUES|SET|LIKE|LIMIT|OFFSET|MATCH|AGAINST|BOOLEAN|BETWEEN|UNION|HAVING)\b"
+                for m in re.finditer(r"\"([^\"\n]*)\"\s*\+\s*([^+\n\"]+)", text):
+                    if not re.search(_sql_kw, m.group(1), re.IGNORECASE):
+                        continue
+                    if any(p in m.group(2) for p in params):
+                        flagged = True
+                        break
+            if not flagged:
+                continue
+            line_start, line_end = document.line_range(node)
+            hits.append(
+                RuleHit(
+                    SQL_INJECTION_RISK,
+                    document.relative_path,
+                    line_start,
+                    line_end,
+                    message="SQL 字符串通过拼接方法参数构造，存在 SQL 注入风险，应使用 PreparedStatement 参数化。",
+                    language=language,
+                )
+            )
         return hits
 
     # ════════════════════════════════════════════════════════════════════
