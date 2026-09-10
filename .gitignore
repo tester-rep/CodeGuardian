@@ -130,3 +130,7 @@ yarn-error.log*
 /_*
 
 docs/
+
+.codebuddy/
+# 测试生成的基准结果
+benchmark/fp_corpus/last_report.json
